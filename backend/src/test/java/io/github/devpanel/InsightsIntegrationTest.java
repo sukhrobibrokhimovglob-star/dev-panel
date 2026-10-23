@@ -180,9 +180,10 @@ class InsightsIntegrationTest {
           .csrf().disable().build();
     }
 
+    // Built the way gp builds it, without Boot's RestTemplateBuilder bean
     @Bean
-    RestTemplate restTemplate(RestTemplateBuilder builder) {
-      return builder.build();
+    RestTemplate restTemplate() {
+      return new RestTemplateBuilder().build();
     }
 
     @RestController

@@ -116,9 +116,10 @@ public class InsightsConfiguration {
     return new OutboundStats();
   }
 
+  /** Static: a bean post-processor must not wait for this configuration's other beans. */
   @Bean
-  RestTemplateOutbound devPanelRestTemplateOutbound(OutboundStats devPanelOutboundStats) {
-    return new RestTemplateOutbound(devPanelOutboundStats);
+  static RestTemplateOutbound devPanelRestTemplateOutbound(ObjectProvider<OutboundStats> stats) {
+    return new RestTemplateOutbound(stats);
   }
 
   @Bean
