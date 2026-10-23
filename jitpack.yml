@@ -1,0 +1,5 @@
+# JitPack builds a tag on the first request for it; the build downloads Node and bundles the UI.
+jdk:
+  - openjdk17
+install:
+  - ./mvnw -B -DskipTests install
