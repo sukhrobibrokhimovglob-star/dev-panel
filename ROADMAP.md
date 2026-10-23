@@ -24,6 +24,6 @@
 6. Config viewer with masked secrets; Liquibase/Flyway status
 7. Alerts to Telegram or a webhook (pending connections, disk, error rate)
 8. `DevPanelModule` extension point for project-specific tabs
-9. Migrate vac2 to the starter and move its organization sync into a module
+9. Migrate existing in-house panels to the starter, with their project-specific tabs as modules
 10. Spring Boot 3 (jakarta) variant
 11. GitHub Actions CI; later Maven Central

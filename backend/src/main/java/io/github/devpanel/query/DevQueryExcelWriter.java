@@ -34,7 +34,7 @@ public class DevQueryExcelWriter implements ResultSetExtractor<byte[]> {
   /** The header takes row 0, so this is also the number of data rows that fit. */
   static final int EXCEL_MAX_ROWS = SpreadsheetVersion.EXCEL2007.getLastRowIndex();
   private static final int EXCEL_MAX_TEXT = SpreadsheetVersion.EXCEL2007.getMaxTextLength();
-  /** Excel keeps 15 significant digits, so longer numbers (ids, PINFLs) are written as text. */
+  /** Excel keeps 15 significant digits, so longer numbers (ids, national ID numbers) are written as text. */
   private static final int EXCEL_MAX_DIGITS = 15;
 
   /** SXSSF keeps only a window of the rows in memory. */
