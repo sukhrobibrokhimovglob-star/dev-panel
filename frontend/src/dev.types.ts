@@ -1,9 +1,17 @@
 export type TDevRole = "SUPER_ADMIN" | "ADMIN" | "USER";
 export type TDevAccess = "READ_ONLY" | "READ_WRITE";
 
-export interface IDevCredentials {
+export type TDevLoginStage =
+  | "PASSWORD_CHANGE"
+  | "TOTP_SETUP"
+  | "TOTP"
+  | "ACTIVE";
+
+export interface IDevLoginState {
+  stage: TDevLoginStage;
   username: string;
-  password: string;
+  // Faqat TOTP_SETUP bosqichida: QR kod uchun URI va qo'lda kiritish uchun kalit
+  setup: { secret: string; uri: string } | null;
 }
 
 export interface IDevAccount {
@@ -13,6 +21,7 @@ export interface IDevAccount {
   access: TDevAccess;
   enabled: boolean;
   mustChangePassword: boolean;
+  totpEnabled: boolean;
   createdAt: string;
   createdBy: string;
 }

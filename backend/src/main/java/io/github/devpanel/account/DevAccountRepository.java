@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.RowMapper;
 public class DevAccountRepository {
 
   private static final String COLUMNS = "id, username, password_hash, role, access, enabled,"
-      + " must_change_password, created_at, created_by";
+      + " must_change_password, created_at, created_by, totp_secret, totp_enabled, totp_last_step";
 
   private static final RowMapper<DevAccount> ROW = DevAccountRepository::map;
 
@@ -69,6 +69,34 @@ public class DevAccountRepository {
         account.enabled(), account.mustChangePassword(), account.id());
   }
 
+  public Optional<DevAccount> findByRole(DevRole role) {
+    return findAllByRole(role).stream().findFirst();
+  }
+
+  /** Stores a new, not yet confirmed authenticator secret. */
+  public void startTotpSetup(long id, String secret) {
+    jdbcTemplate.update("UPDATE devpanel_account SET totp_secret = ?, totp_enabled = FALSE,"
+        + " totp_last_step = 0 WHERE id = ?", secret, id);
+  }
+
+  public void confirmTotp(long id) {
+    jdbcTemplate.update("UPDATE devpanel_account SET totp_enabled = TRUE WHERE id = ?", id);
+  }
+
+  public void resetTotp(long id) {
+    jdbcTemplate.update("UPDATE devpanel_account SET totp_secret = NULL, totp_enabled = FALSE,"
+        + " totp_last_step = 0 WHERE id = ?", id);
+  }
+
+  /**
+   * Records {@code step} as used. The condition makes it atomic: of two requests with the same
+   * code, even on two instances, only one gets {@code true}.
+   */
+  public boolean useTotpStep(long id, long step) {
+    return jdbcTemplate.update("UPDATE devpanel_account SET totp_last_step = ?"
+        + " WHERE id = ? AND totp_last_step < ?", step, id, step) == 1;
+  }
+
   private long count(String sql, Object... args) {
     Long count = jdbcTemplate.queryForObject(sql, Long.class, args);
     return count == null ? 0 : count;
@@ -85,6 +113,9 @@ public class DevAccountRepository {
         rs.getBoolean("enabled"),
         rs.getBoolean("must_change_password"),
         createdAt == null ? null : createdAt.toLocalDateTime(),
-        rs.getString("created_by"));
+        rs.getString("created_by"),
+        rs.getString("totp_secret"),
+        rs.getBoolean("totp_enabled"),
+        rs.getLong("totp_last_step"));
   }
 }

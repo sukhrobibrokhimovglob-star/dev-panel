@@ -17,6 +17,7 @@ public class DevPanelProperties {
   private String basePath = "/dev-panel";
 
   private final SuperAdmin superAdmin = new SuperAdmin();
+  private final Session session = new Session();
   private final Metrics metrics = new Metrics();
   private final Query query = new Query();
   private final Files files = new Files();
@@ -55,6 +56,10 @@ public class DevPanelProperties {
     return superAdmin;
   }
 
+  public Session getSession() {
+    return session;
+  }
+
   public Metrics getMetrics() {
     return metrics;
   }
@@ -86,6 +91,20 @@ public class DevPanelProperties {
      */
     private String initialPassword;
 
+    /**
+     * For a super admin who lost the phone: on startup, makes the super admin set up the
+     * authenticator app again at the next login. Remove it again once done.
+     */
+    private boolean resetTwoFactor;
+
+    public boolean isResetTwoFactor() {
+      return resetTwoFactor;
+    }
+
+    public void setResetTwoFactor(boolean resetTwoFactor) {
+      this.resetTwoFactor = resetTwoFactor;
+    }
+
     public String getUsername() {
       return username;
     }
@@ -104,6 +123,31 @@ public class DevPanelProperties {
 
     public boolean hasInitialPassword() {
       return initialPassword != null && !initialPassword.isBlank();
+    }
+  }
+
+  public static class Session {
+
+    /** A login ends this long after it started, whatever happens. */
+    private Duration timeout = Duration.ofHours(8);
+
+    /** A login ends after this long without any request. */
+    private Duration idleTimeout = Duration.ofMinutes(30);
+
+    public Duration getTimeout() {
+      return timeout;
+    }
+
+    public void setTimeout(Duration timeout) {
+      this.timeout = timeout;
+    }
+
+    public Duration getIdleTimeout() {
+      return idleTimeout;
+    }
+
+    public void setIdleTimeout(Duration idleTimeout) {
+      this.idleTimeout = idleTimeout;
     }
   }
 

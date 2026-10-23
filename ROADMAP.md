@@ -10,7 +10,9 @@
 - Logs and docs browser, log search by trace id
 - SQL console (read-only by default, optional guarded UPDATE, Excel export)
 - Bundled Vue UI served from the jar, gzipped
-- Tests: filter-chain security host, adapter security host, SQL validation
+- Login: password + Google Authenticator for every account, cookie sessions, CSRF header,
+  2FA reset by the super admin (Basic auth removed)
+- Tests: filter-chain security host, adapter security host, SQL validation, TOTP RFC vectors
 
 ## Next
 1. Publish `0.1.0` on JitPack and switch gp to it

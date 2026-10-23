@@ -17,6 +17,8 @@ export default defineConfig({
         target: process.env.DEV_PANEL_BACKEND || "http://localhost:8080",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, "/dev-panel/api"),
+        // Backend cookie'ni /dev-panel yo'liga qo'yadi, dev server esa / da ishlaydi
+        cookiePathRewrite: { "/dev-panel": "/" },
       },
     },
   },

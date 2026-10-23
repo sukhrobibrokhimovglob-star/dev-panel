@@ -18,7 +18,6 @@
     "passwordChanged": "Password changed",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
-    "rememberMe": "Remember me",
     "tabs": {
       "metrics": "Server",
       "audit": "Error audit",
@@ -179,6 +178,22 @@
       "takeDump": "Take thread dump",
       "filter": "Filter by name, state or class",
       "threadCount": "{count} threads"
+    },
+    "twoFactor": {
+      "setupTitle": "Set up Google Authenticator",
+      "setupHint": "Scan the QR code with Google Authenticator (or Authy, Microsoft Authenticator), then enter the 6-digit code it shows. Every login needs this code.",
+      "codeTitle": "Enter the code",
+      "codeHint": "Open Google Authenticator and enter the 6-digit code for Dev Panel.",
+      "code": "6-digit code",
+      "manualKey": "Can't scan? Enter this key in the app",
+      "qrAlt": "QR code for the authenticator app",
+      "confirm": "Confirm and sign in",
+      "enabled": "Two-factor login is on",
+      "on": "2FA on",
+      "notSetUp": "2FA not set up",
+      "reset": "Reset 2FA",
+      "resetConfirm": "{username} will be logged out and must scan a new QR code at the next login. Continue?",
+      "resetDone": "2FA was reset"
     }
   },
   "actions": {

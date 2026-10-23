@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Login check and account management. Who may do what is enforced in {@link DevAccountService};
+ * The logged-in account and account management. Who may do what is enforced in {@link DevAccountService};
  * the {@link DevAccount} parameter is the logged-in account.
  */
 @DevPanelApi
@@ -35,21 +35,11 @@ public class DevAccountController {
     this.accountService = accountService;
   }
 
-  /**
-   * Login check of the panel's login form: 204 when the Basic credentials are valid, 401
-   * otherwise. It holds no state; the client sends the same header on every later request.
-   */
-  @PostMapping("/auth")
-  @ResponseStatus(HttpStatus.NO_CONTENT)
-  public void auth(DevAccount actor) {
-  }
-
   @GetMapping("/me")
   public DevAccount me(DevAccount actor) {
     return actor;
   }
 
-  /** Also the only thing an account can do until it has replaced its temporary password. */
   @PostMapping("/me/password")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void changePassword(DevAccount actor, @RequestBody PasswordChange request) {
@@ -75,6 +65,11 @@ public class DevAccountController {
   @PostMapping("/accounts/{id}/reset-password")
   public ResponseEntity<Credentials> resetPassword(DevAccount actor, @PathVariable long id) {
     return credentials(HttpStatus.OK, accountService.resetPassword(actor, id));
+  }
+
+  @PostMapping("/accounts/{id}/reset-two-factor")
+  public DevAccount resetTwoFactor(DevAccount actor, @PathVariable long id) {
+    return accountService.resetTwoFactor(actor, id);
   }
 
   /** A temporary password must not be stored by any cache on the way. */

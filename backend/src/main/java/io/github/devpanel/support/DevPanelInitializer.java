@@ -6,6 +6,7 @@ import io.github.devpanel.account.DevAccountService;
 import io.github.devpanel.account.DevRole;
 import io.github.devpanel.audit.DevRequestAuditRepository;
 import io.github.devpanel.metrics.DevMetricsHistory;
+import io.github.devpanel.session.DevSessions;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.concurrent.Executors;
@@ -32,23 +33,30 @@ public class DevPanelInitializer implements SmartInitializingSingleton, Disposab
   private final DevAccountService accountService;
   private final DevMetricsHistory metricsHistory;
   private final DevRequestAuditRepository auditRepository;
+  private final DevSessions sessions;
   private ScheduledExecutorService scheduler;
 
   public DevPanelInitializer(DevPanelProperties properties, DevPanelSchema schema,
       DevAccountRepository accountRepository, DevAccountService accountService,
-      DevMetricsHistory metricsHistory, DevRequestAuditRepository auditRepository) {
+      DevMetricsHistory metricsHistory, DevRequestAuditRepository auditRepository,
+      DevSessions sessions) {
     this.properties = properties;
     this.schema = schema;
     this.accountRepository = accountRepository;
     this.accountService = accountService;
     this.metricsHistory = metricsHistory;
     this.auditRepository = auditRepository;
+    this.sessions = sessions;
   }
 
   @Override
   public void afterSingletonsInstantiated() {
     schema.create();
     createSuperAdmin();
+    if (properties.getSuperAdmin().isResetTwoFactor() && accountService.resetSuperAdminTwoFactor()) {
+      log.warn("Dev panel super admin two-factor login was reset; it is set up again at the next"
+          + " login. Remove devpanel.super-admin.reset-two-factor now.");
+    }
     startScheduler();
     log.info("Dev panel is enabled at {}/", properties.getBasePath());
   }
@@ -83,9 +91,18 @@ public class DevPanelInitializer implements SmartInitializingSingleton, Disposab
     });
     long interval = Math.max(1, metricsHistory.interval().toSeconds());
     scheduler.scheduleAtFixedRate(metricsHistory::sample, 0, interval, TimeUnit.SECONDS);
+    scheduler.scheduleAtFixedRate(this::pruneSessions, 5, 60, TimeUnit.MINUTES);
     if (properties.getAudit().isEnabled()) {
       scheduler.scheduleAtFixedRate(this::pruneAudit, 1, Duration.ofDays(1).toMinutes(),
           TimeUnit.MINUTES);
+    }
+  }
+
+  private void pruneSessions() {
+    try {
+      sessions.deleteExpired();
+    } catch (RuntimeException e) {
+      log.warn("Dev panel session cleanup failed: {}", e.getMessage());
     }
   }
 

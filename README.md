@@ -10,8 +10,9 @@ application serves a panel at `/dev-panel/` with:
 - **Error audit**: every response with status >= 400, filterable by trace id, path, status, time
 - **Logs and docs**: browse and download files, find all log lines of one request by trace id
 - **SQL console**: read-only SELECTs with autocomplete and Excel export (optional guarded UPDATE)
-- **Accounts**: its own logins (super admin, admins, users; read-only or read-write), lockout
-  after 5 failed attempts, forced password change on first login
+- **Accounts**: its own logins (super admin, admins, users; read-only or read-write)
+- **Login**: password plus a Google Authenticator code for every account, sessions in an
+  `HttpOnly` cookie (8 h, 30 min idle), lockout after 5 failed attempts
 
 It does not need Actuator, Prometheus, or any extra server.
 
@@ -42,21 +43,31 @@ devpanel.super-admin.initial-password=${DEV_PANEL_SUPERADMIN_PASSWORD:}
 ```
 
 Start the application and open `http://<host>:<port>/dev-panel/`. Log in as `superadmin` with the
-initial password; you must change it on the first login. Without the property no super admin is
-created, so set it through an environment variable rather than committing a password.
+initial password. The first login asks you to replace it and to scan a QR code with Google
+Authenticator (or Authy, Microsoft Authenticator); every later login asks for the 6-digit code.
+Without the property no super admin is created, so set it through an environment variable rather
+than committing a password.
+
+### Lost phone
+
+- A user or admin: the super admin clicks **Reset 2FA** on the account in the Accounts tab. The
+  account is logged out and scans a new QR code at the next login.
+- The super admin: start the application once with
+  `devpanel.super-admin.reset-two-factor=true`, set up the app again, then remove the property.
 
 ## Requirements
 
 - Spring Boot 2.7.x (javax.servlet), Java 17+, a servlet web application
-- One `DataSource`. The panel creates two tables, `devpanel_account` and
+- One `DataSource`. The panel creates three tables, `devpanel_account`, `devpanel_session` and
   `devpanel_request_audit`, with `CREATE TABLE IF NOT EXISTS`; it never touches your
   Liquibase/Flyway history
-- The SQL console needs PostgreSQL; everything else works on any database
+- The SQL console needs PostgreSQL; everything else works on any database that supports
+  `CREATE TABLE IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` (PostgreSQL, H2, MariaDB)
 - Excel export needs `org.apache.poi:poi-ooxml` on the classpath (most projects have it)
 
 ## How it fits into your application
 
-- **Security**: the panel checks its own logins (HTTP Basic against `devpanel_account`) and tells
+- **Security**: the panel checks its own logins (session cookie, see `devpanel_session`) and tells
   your Spring Security to ignore `/dev-panel/**`. This works with both a
   `WebSecurityConfigurerAdapter` and `SecurityFilterChain` beans. Your own endpoints stay exactly
   as protected as before.
@@ -76,6 +87,9 @@ created, so set it through an environment variable rather than committing a pass
 | `devpanel.base-path` | `/dev-panel` | Where the panel is served |
 | `devpanel.super-admin.username` | `superadmin` | |
 | `devpanel.super-admin.initial-password` | (empty) | Only used while no super admin exists |
+| `devpanel.super-admin.reset-two-factor` | `false` | Super admin lost the phone; remove after use |
+| `devpanel.session.timeout` | `8h` | A login ends this long after it started |
+| `devpanel.session.idle-timeout` | `30m` | A login ends after this long without requests |
 | `devpanel.metrics.sample-interval` | `15s` | History sample rate |
 | `devpanel.metrics.retention` | `24h` | How long history is kept in memory |
 | `devpanel.query.enabled` | `true` | SQL console |
@@ -94,7 +108,15 @@ created, so set it through an environment variable rather than committing a pass
 
 ## Security notes
 
-- Serve the panel over HTTPS only: HTTP Basic sends the password with every request.
+- Every login needs the password and a Google Authenticator code (RFC 6238); a code works only
+  once, and wrong passwords and wrong codes count together towards the lockout. The QR code is
+  drawn in the browser, so the secret never goes to a third-party service.
+- The session lives in an `HttpOnly`, `SameSite=Strict` cookie (`Secure` on HTTPS) that page
+  scripts cannot read; the database keeps only its SHA-256. A new token is issued once the code
+  is accepted. Requests other than `GET` must carry an `X-DevPanel-Request` header, so other
+  sites cannot forge them.
+- A password reset, a 2FA reset or disabling an account logs that account out everywhere.
+- Serve the panel over HTTPS.
 - The SQL console runs every query in a read-only transaction with a statement timeout, so
   PostgreSQL itself refuses writes. `UPDATE` is off unless you enable it, and it can never touch
   the panel's own tables or the migration history.

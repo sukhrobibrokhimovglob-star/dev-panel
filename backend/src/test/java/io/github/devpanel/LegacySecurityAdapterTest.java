@@ -2,6 +2,7 @@ package io.github.devpanel;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -28,9 +29,9 @@ class LegacySecurityAdapterTest {
 
   @Test
   void panelWorksNextToAnAdapter() {
-    assertThat(rest.withBasicAuth("superadmin", "Initial-Pass-1")
-        .postForEntity("/dev-panel/api/auth", null, Void.class).getStatusCode())
-        .isEqualTo(HttpStatus.NO_CONTENT);
+    PanelClient panel = new PanelClient(rest);
+    assertThat(panel.post("/login", Map.of("username", "superadmin", "password", "Initial-Pass-1"))
+        .getBody().get("stage")).isEqualTo("PASSWORD_CHANGE");
     assertThat(rest.getForEntity("/dev-panel/", String.class).getStatusCode())
         .isEqualTo(HttpStatus.OK);
     assertThat(rest.getForEntity("/anything", String.class).getStatusCode())

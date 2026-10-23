@@ -8,10 +8,10 @@ import {
   IDevAccountUpdateReq,
   IDevAuditEntry,
   IDevAuditFilter,
-  IDevCredentials,
   IDevFileEntry,
   IDevInfo,
   IDevJvm,
+  IDevLoginState,
   IDevLogTrace,
   IDevMetrics,
   IDevMetricsHistory,
@@ -22,7 +22,7 @@ import {
   TDevQueryRow,
 } from "./dev.types";
 
-export type { IDevAccount, IDevCredentials } from "./dev.types";
+export type { IDevAccount } from "./dev.types";
 
 // Panel backend ichidan /<base>/ da beriladi, API esa /<base>/api da — nisbiy yo'l
 // context-path va base-path qanday bo'lmasin to'g'ri ishlaydi. Dev rejimida Vite proxy qiladi
@@ -32,26 +32,42 @@ const devInstance = axios.create({ baseURL: API_BASE_URL, timeout: 50000 });
 
 devInstance.interceptors.request.use((config) => {
   config.headers["Accept-Language"] = getCurrentLocale();
-  // Login paytida auth aniq beriladi, qolgan so'rovlar store'dagi login/parolni oladi
-  if (!config.auth) {
-    const credentials = useDevStore().credentials;
-    if (credentials) config.auth = credentials;
-  }
+  // Backend GET'dan boshqa har bir so'rovda shu header'ni talab qiladi: boshqa saytdagi forma
+  // uni qo'sha olmaydi, shuning uchun CSRF bo'lmaydi
+  config.headers["X-DevPanel-Request"] = "1";
   return config;
 });
 
+// Sessiya tugasa (muddati, chiqish, 2FA reset) — login sahifasiga qaytamiz
+devInstance.interceptors.response.use(undefined, (error) => {
+  const url: string = error?.config?.url ?? "";
+  if (error?.response?.status === 401 && !url.startsWith("/login")) {
+    useDevStore().reset();
+  }
+  return Promise.reject(error);
+});
+
 export const useDevApi = () => {
-  // Login formasi uchun tekshiruv: 204 yoki 401. Backend hech qachon WWW-Authenticate
-  // qaytarmaydi — aks holda brauzer o'zining login oynasini formaning ustiga chiqaradi
-  const AUTH = (auth: IDevCredentials) => devInstance.post("/auth", null, { auth });
+  // Login bosqichlari: parol → (vaqtinchalik parolni almashtirish) → (ilovani ulash) → kod
+  const LOGIN = (username: string, password: string) =>
+    devInstance.post<IDevLoginState>("/login", { username, password });
 
-  const GET_ME = (auth?: IDevCredentials) =>
-    devInstance.get<IDevAccount>("/me", { auth });
+  const GET_LOGIN_STATE = () => devInstance.get<IDevLoginState>("/login/state");
 
-  const CHANGE_PASSWORD = (
-    auth: IDevCredentials,
-    body: { currentPassword: string; newPassword: string },
-  ) => devInstance.post("/me/password", body, { auth });
+  const LOGIN_NEW_PASSWORD = (newPassword: string) =>
+    devInstance.post<IDevLoginState>("/login/password", { newPassword });
+
+  const LOGIN_CODE = (code: string) =>
+    devInstance.post<IDevAccount>("/login/code", { code });
+
+  const LOGOUT = () => devInstance.post("/logout");
+
+  const GET_ME = () => devInstance.get<IDevAccount>("/me");
+
+  const CHANGE_PASSWORD = (body: {
+    currentPassword: string;
+    newPassword: string;
+  }) => devInstance.post("/me/password", body);
 
   const GET_INFO = () => devInstance.get<IDevInfo>("/info");
 
@@ -111,8 +127,16 @@ export const useDevApi = () => {
   const RESET_PASSWORD = (id: number) =>
     devInstance.post<IDevAccountCredentials>(`/accounts/${id}/reset-password`);
 
+  // Telefonini yo'qotgan foydalanuvchi keyingi kirishda ilovani qaytadan ulaydi
+  const RESET_TWO_FACTOR = (id: number) =>
+    devInstance.post<IDevAccount>(`/accounts/${id}/reset-two-factor`);
+
   return {
-    AUTH,
+    LOGIN,
+    GET_LOGIN_STATE,
+    LOGIN_NEW_PASSWORD,
+    LOGIN_CODE,
+    LOGOUT,
     GET_ME,
     CHANGE_PASSWORD,
     GET_INFO,
@@ -132,5 +156,6 @@ export const useDevApi = () => {
     CREATE_ACCOUNT,
     UPDATE_ACCOUNT,
     RESET_PASSWORD,
+    RESET_TWO_FACTOR,
   };
 };

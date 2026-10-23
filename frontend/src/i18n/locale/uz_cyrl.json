@@ -18,7 +18,6 @@
     "passwordChanged": "Парол алмаштирилди",
     "showPassword": "Паролни кўрсатиш",
     "hidePassword": "Паролни яшириш",
-    "rememberMe": "Мени эслаб қол",
     "tabs": {
       "metrics": "Сервер",
       "audit": "Хатолар аудити",
@@ -179,6 +178,22 @@
       "takeDump": "Оқимлар дампини олиш",
       "filter": "Ном, ҳолат ёки класс бўйича фильтр",
       "threadCount": "{count} та оқим"
+    },
+    "twoFactor": {
+      "setupTitle": "Google Authenticator'ни уланг",
+      "setupHint": "QR кодни Google Authenticator (ёки Authy, Microsoft Authenticator) билан сканерланг ва илова кўрсатган 6 хонали кодни киритинг. Ҳар бир киришда шу код керак бўлади.",
+      "codeTitle": "Кодни киритинг",
+      "codeHint": "Google Authenticator'ни очинг ва Dev Panel учун 6 хонали кодни киритинг.",
+      "code": "6 хонали код",
+      "manualKey": "Сканерланмаяптими? Иловага шу калитни киритинг",
+      "qrAlt": "Аутентификатор иловаси учун QR код",
+      "confirm": "Тасдиқлаш ва кириш",
+      "enabled": "Икки босқичли кириш ёқилди",
+      "on": "2FA ёқилган",
+      "notSetUp": "2FA уланмаган",
+      "reset": "2FA'ни тиклаш",
+      "resetConfirm": "{username} тизимдан чиқарилади ва кейинги киришда янги QR кодни сканерлаши керак. Давом этилсинми?",
+      "resetDone": "2FA тикланди"
     }
   },
   "actions": {

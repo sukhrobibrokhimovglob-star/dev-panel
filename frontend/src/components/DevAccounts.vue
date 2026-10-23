@@ -61,6 +61,19 @@
             >
               {{ $t("devPanel.accounts.temporary") }}
             </el-tag>
+            <el-tag
+              :type="row.totpEnabled ? 'success' : 'info'"
+              effect="plain"
+              disable-transitions
+            >
+              {{
+                $t(
+                  row.totpEnabled
+                    ? "devPanel.twoFactor.on"
+                    : "devPanel.twoFactor.notSetUp",
+                )
+              }}
+            </el-tag>
           </div>
         </template>
       </el-table-column>
@@ -74,7 +87,7 @@
           formatDateTime(row.createdAt)
         }}</template>
       </el-table-column>
-      <el-table-column v-if="manageable" min-width="270" align="center">
+      <el-table-column v-if="manageable" min-width="360" align="center">
         <template #default="{ row }">
           <div
             v-if="row.role !== 'SUPER_ADMIN'"
@@ -90,6 +103,16 @@
               @click="resetPassword(row)"
             >
               {{ $t("devPanel.accounts.resetPassword") }}
+            </el-button>
+            <el-button
+              v-if="row.totpEnabled"
+              size="small"
+              type="danger"
+              plain
+              class="!ml-0"
+              @click="resetTwoFactor(row)"
+            >
+              {{ $t("devPanel.twoFactor.reset") }}
             </el-button>
           </div>
         </template>
@@ -207,7 +230,13 @@ import { devErrorMessage, formatDateTime } from "../dev.utils";
 
 const { t } = useI18n();
 const store = useDevStore();
-const { GET_ACCOUNTS, CREATE_ACCOUNT, UPDATE_ACCOUNT, RESET_PASSWORD } =
+const {
+  GET_ACCOUNTS,
+  CREATE_ACCOUNT,
+  UPDATE_ACCOUNT,
+  RESET_PASSWORD,
+  RESET_TWO_FACTOR,
+} =
   useDevApi();
 
 const accounts = ref<IDevAccount[]>([]);
@@ -347,6 +376,30 @@ const resetPassword = async (account: IDevAccount) => {
   try {
     const { data } = await RESET_PASSWORD(account.id);
     showIssued(data);
+    load();
+  } catch (error) {
+    ElMessage.error(await devErrorMessage(error));
+  }
+};
+
+// Telefonini yo'qotgan foydalanuvchi: tizimdan chiqariladi, keyingi kirishda QR'ni qayta skanerlaydi
+const resetTwoFactor = async (account: IDevAccount) => {
+  try {
+    await ElMessageBox.confirm(
+      t("devPanel.twoFactor.resetConfirm", { username: account.username }),
+      t("devPanel.twoFactor.reset"),
+      {
+        type: "warning",
+        confirmButtonText: t("devPanel.twoFactor.reset"),
+        cancelButtonText: t("actions.cancel"),
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await RESET_TWO_FACTOR(account.id);
+    ElMessage.success(t("devPanel.twoFactor.resetDone"));
     load();
   } catch (error) {
     ElMessage.error(await devErrorMessage(error));

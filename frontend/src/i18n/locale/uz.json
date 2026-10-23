@@ -18,7 +18,6 @@
     "passwordChanged": "Parol almashtirildi",
     "showPassword": "Parolni ko'rsatish",
     "hidePassword": "Parolni yashirish",
-    "rememberMe": "Meni eslab qol",
     "tabs": {
       "metrics": "Server",
       "audit": "Xatolar auditi",
@@ -179,6 +178,22 @@
       "takeDump": "Oqimlar dampini olish",
       "filter": "Nom, holat yoki klass bo'yicha filtr",
       "threadCount": "{count} ta oqim"
+    },
+    "twoFactor": {
+      "setupTitle": "Google Authenticator'ni ulang",
+      "setupHint": "QR kodni Google Authenticator (yoki Authy, Microsoft Authenticator) bilan skanerlang va ilova ko'rsatgan 6 xonali kodni kiriting. Har bir kirishda shu kod kerak bo'ladi.",
+      "codeTitle": "Kodni kiriting",
+      "codeHint": "Google Authenticator'ni oching va Dev Panel uchun 6 xonali kodni kiriting.",
+      "code": "6 xonali kod",
+      "manualKey": "Skanerlanmayaptimi? Ilovaga shu kalitni kiriting",
+      "qrAlt": "Autentifikator ilovasi uchun QR kod",
+      "confirm": "Tasdiqlash va kirish",
+      "enabled": "Ikki bosqichli kirish yoqildi",
+      "on": "2FA yoqilgan",
+      "notSetUp": "2FA ulanmagan",
+      "reset": "2FA'ni tiklash",
+      "resetConfirm": "{username} tizimdan chiqariladi va keyingi kirishda yangi QR kodni skanerlashi kerak. Davom etilsinmi?",
+      "resetDone": "2FA tiklandi"
     }
   },
   "actions": {

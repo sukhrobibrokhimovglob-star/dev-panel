@@ -4,6 +4,7 @@ import io.github.devpanel.account.DevAccountRequests.Create;
 import io.github.devpanel.account.DevAccountRequests.Credentials;
 import io.github.devpanel.account.DevAccountRequests.PasswordChange;
 import io.github.devpanel.account.DevAccountRequests.Update;
+import io.github.devpanel.session.DevSessions;
 import io.github.devpanel.support.DevPanelException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
@@ -21,8 +22,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  *       change their role, access and enabled flag, and reset their password;</li>
  *   <li>an admin can create users (and list them), nothing else;</li>
  *   <li>a user can only manage their own password;</li>
- *   <li>a new or reset account gets a temporary password that must be replaced on first login.</li>
+ *   <li>a new or reset account gets a temporary password that must be replaced on first login;</li>
+ *   <li>the super admin can reset another account's two-factor login, which makes it set up the
+ *       authenticator app again (e.g. after losing the phone).</li>
  * </ul>
+ * A password reset, a 2FA reset or disabling an account logs that account out everywhere.
  * The actor is always the account re-read from the database for the current request, so a role or
  * access change applies to the very next request.
  */
@@ -39,11 +43,27 @@ public class DevAccountService {
 
   private final DevAccountRepository repository;
   private final PasswordEncoder passwordEncoder;
+  private final DevSessions sessions;
   private final SecureRandom random = new SecureRandom();
 
-  public DevAccountService(DevAccountRepository repository, PasswordEncoder passwordEncoder) {
+  public DevAccountService(DevAccountRepository repository, PasswordEncoder passwordEncoder,
+      DevSessions sessions) {
     this.repository = repository;
     this.passwordEncoder = passwordEncoder;
+    this.sessions = sessions;
+  }
+
+  /** The first-login step: the current (temporary) password was just checked by the login. */
+  public DevAccount replaceTemporaryPassword(DevAccount account, String newPassword) {
+    if (newPassword == null || newPassword.isBlank()) {
+      throw DevPanelException.badRequest("New password is required");
+    }
+    if (passwordEncoder.matches(newPassword, account.passwordHash())) {
+      throw DevPanelException.badRequest("New password must differ from the current one");
+    }
+    validateNewPassword(account, null, newPassword);
+    repository.update(account.withPassword(passwordEncoder.encode(newPassword), false));
+    return repository.findById(account.id()).orElseThrow();
   }
 
   public void changePassword(DevAccount actor, PasswordChange request) {
@@ -117,6 +137,9 @@ public class DevAccountService {
     boolean enabled = changes.enabled() != null ? changes.enabled() : account.enabled();
 
     repository.update(account.withRoleAccessEnabled(role, access, enabled));
+    if (!enabled) {
+      sessions.endAll(id);
+    }
     return repository.findById(id).orElseThrow();
   }
 
@@ -126,7 +149,26 @@ public class DevAccountService {
 
     String temporaryPassword = temporaryPassword();
     repository.update(account.withPassword(passwordEncoder.encode(temporaryPassword), true));
+    sessions.endAll(id);
     return new Credentials(repository.findById(id).orElseThrow(), temporaryPassword);
+  }
+
+  /** The account sets up the authenticator app again at its next login. */
+  public DevAccount resetTwoFactor(DevAccount actor, long id) {
+    requireSuperAdmin(actor);
+    requireManageable(id);
+    repository.resetTotp(id);
+    sessions.endAll(id);
+    return repository.findById(id).orElseThrow();
+  }
+
+  /** For {@code devpanel.super-admin.reset-two-factor=true}: the super admin lost the phone. */
+  public boolean resetSuperAdminTwoFactor() {
+    return repository.findByRole(DevRole.SUPER_ADMIN).map(superAdmin -> {
+      repository.resetTotp(superAdmin.id());
+      sessions.endAll(superAdmin.id());
+      return true;
+    }).orElse(false);
   }
 
   /**
@@ -141,7 +183,7 @@ public class DevAccountService {
   private DevAccount newAccount(String username, DevRole role, DevAccess access,
       String temporaryPassword, String createdBy) {
     return new DevAccount(null, username, passwordEncoder.encode(temporaryPassword), role, access,
-        true, true, LocalDateTime.now(), createdBy);
+        true, true, LocalDateTime.now(), createdBy, null, false, 0);
   }
 
   private String temporaryPassword() {
@@ -175,7 +217,7 @@ public class DevAccountService {
       throw DevPanelException.badRequest("Password must be " + MIN_PASSWORD_LENGTH + "-"
           + MAX_PASSWORD_LENGTH + " characters long");
     }
-    if (candidate.equals(current)) {
+    if (candidate.equals(current) && current != null) {
       throw DevPanelException.badRequest("New password must differ from the current one");
     }
     if (candidate.equalsIgnoreCase(account.username())) {

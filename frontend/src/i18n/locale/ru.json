@@ -18,7 +18,6 @@
     "passwordChanged": "Пароль изменён",
     "showPassword": "Показать пароль",
     "hidePassword": "Скрыть пароль",
-    "rememberMe": "Запомнить меня",
     "tabs": {
       "metrics": "Сервер",
       "audit": "Аудит ошибок",
@@ -179,6 +178,22 @@
       "takeDump": "Снять дамп потоков",
       "filter": "Фильтр по имени, состоянию или классу",
       "threadCount": "Потоков: {count}"
+    },
+    "twoFactor": {
+      "setupTitle": "Подключите Google Authenticator",
+      "setupHint": "Отсканируйте QR-код в Google Authenticator (или Authy, Microsoft Authenticator) и введите 6-значный код из приложения. Этот код нужен при каждом входе.",
+      "codeTitle": "Введите код",
+      "codeHint": "Откройте Google Authenticator и введите 6-значный код для Dev Panel.",
+      "code": "6-значный код",
+      "manualKey": "Не сканируется? Введите этот ключ в приложении",
+      "qrAlt": "QR-код для приложения-аутентификатора",
+      "confirm": "Подтвердить и войти",
+      "enabled": "Двухфакторный вход включён",
+      "on": "2FA вкл.",
+      "notSetUp": "2FA не настроен",
+      "reset": "Сбросить 2FA",
+      "resetConfirm": "{username} будет выведен из системы и при следующем входе должен отсканировать новый QR-код. Продолжить?",
+      "resetDone": "2FA сброшен"
     }
   },
   "actions": {

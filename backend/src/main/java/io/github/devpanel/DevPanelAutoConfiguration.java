@@ -18,6 +18,9 @@ import io.github.devpanel.metrics.HikariPools;
 import io.github.devpanel.query.DevQueryController;
 import io.github.devpanel.query.DevQueryExcelWriter;
 import io.github.devpanel.query.DevQueryService;
+import io.github.devpanel.session.DevLoginController;
+import io.github.devpanel.session.DevLoginService;
+import io.github.devpanel.session.DevSessions;
 import io.github.devpanel.support.DevPanelInitializer;
 import io.github.devpanel.support.DevPanelSchema;
 import io.github.devpanel.support.TraceIds;
@@ -40,6 +43,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -58,7 +62,8 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 @ConditionalOnProperty(prefix = "devpanel", name = "enabled", havingValue = "true")
 @ConditionalOnSingleCandidate(DataSource.class)
 @EnableConfigurationProperties(DevPanelProperties.class)
-@Import({DevPanelExceptionHandler.class, DevAccountController.class, DevMetricsController.class,
+@Import({DevPanelExceptionHandler.class, DevLoginController.class, DevAccountController.class,
+    DevMetricsController.class,
     DevPanelAutoConfiguration.AuditConfiguration.class,
     DevPanelAutoConfiguration.QueryConfiguration.class,
     DevPanelAutoConfiguration.FilesConfiguration.class,
@@ -89,8 +94,28 @@ public class DevPanelAutoConfiguration {
   }
 
   @Bean
-  DevAccountService devPanelAccountService(DevAccountRepository devPanelAccountRepository) {
-    return new DevAccountService(devPanelAccountRepository, passwordEncoder);
+  DevSessions devPanelSessions() {
+    return new DevSessions(jdbcTemplate, properties.getBasePath(),
+        properties.getSession().getTimeout(), properties.getSession().getIdleTimeout());
+  }
+
+  @Bean
+  DevAccountService devPanelAccountService(DevAccountRepository devPanelAccountRepository,
+      DevSessions devPanelSessions) {
+    return new DevAccountService(devPanelAccountRepository, passwordEncoder, devPanelSessions);
+  }
+
+  /** The authenticator app lists the account as e.g. "Dev Panel (GP): superadmin". */
+  @Bean
+  DevLoginService devPanelLoginService(DevAccountRepository devPanelAccountRepository,
+      DevAccountService devPanelAccountService, DevSessions devPanelSessions,
+      Environment environment) {
+    String application = environment.getProperty("spring.application.name");
+    String issuer = application == null || application.isBlank()
+        ? "Dev Panel"
+        : "Dev Panel (" + application + ")";
+    return new DevLoginService(devPanelAccountRepository, devPanelAccountService,
+        devPanelSessions, new DevLoginAttempts(), passwordEncoder, issuer);
   }
 
   @Bean
@@ -117,10 +142,10 @@ public class DevPanelAutoConfiguration {
   @Bean
   DevPanelInitializer devPanelInitializer(DevAccountRepository devPanelAccountRepository,
       DevAccountService devPanelAccountService, DevMetricsHistory devPanelMetricsHistory,
-      DevRequestAuditRepository devPanelAuditRepository) {
+      DevRequestAuditRepository devPanelAuditRepository, DevSessions devPanelSessions) {
     return new DevPanelInitializer(properties, new DevPanelSchema(jdbcTemplate),
         devPanelAccountRepository, devPanelAccountService, devPanelMetricsHistory,
-        devPanelAuditRepository);
+        devPanelAuditRepository, devPanelSessions);
   }
 
   @Bean
@@ -130,10 +155,10 @@ public class DevPanelAutoConfiguration {
 
   @Bean
   FilterRegistrationBean<DevPanelAuthFilter> devPanelAuthFilter(
-      DevAccountRepository devPanelAccountRepository) {
+      DevAccountRepository devPanelAccountRepository, DevSessions devPanelSessions) {
     FilterRegistrationBean<DevPanelAuthFilter> registration = new FilterRegistrationBean<>(
         new DevPanelAuthFilter(properties.getApiPath(), devPanelAccountRepository,
-            passwordEncoder, new DevLoginAttempts()));
+            devPanelSessions));
     registration.addUrlPatterns(properties.getApiPath() + "/*");
     registration.setOrder(AUTH_ORDER);
     registration.setName("devPanelAuthFilter");

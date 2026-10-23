@@ -37,7 +37,8 @@
           </header>
 
           <Transition name="swap" mode="out-in">
-            <div class="entry__main" v-if="!authenticated" key="login">
+            <!-- 1. Login va parol -->
+            <div class="entry__main" v-if="!stage" key="login">
               <h2 class="entry__welcome">{{ $t("devPanel.title") }}</h2>
               <p class="entry__hint">{{ $t("devPanel.hint") }}</p>
 
@@ -88,14 +89,6 @@
                     </button>
                   </span>
                 </label>
-                <label class="remember">
-                  <input
-                    v-model="rememberMe"
-                    type="checkbox"
-                    class="remember__box"
-                  />
-                  <span>{{ $t("devPanel.rememberMe") }}</span>
-                </label>
                 <button class="entry__submit" type="submit" :disabled="loading">
                   <span
                     v-if="loading"
@@ -107,7 +100,12 @@
               </form>
             </div>
 
-            <div class="entry__main" v-else key="change">
+            <!-- 2. Vaqtinchalik parolni almashtirish (birinchi kirish) -->
+            <div
+              class="entry__main"
+              v-else-if="stage === 'PASSWORD_CHANGE'"
+              key="change"
+            >
               <h2 class="entry__welcome">
                 {{ $t("devPanel.changePassword") }}
               </h2>
@@ -162,6 +160,85 @@
                 </button>
               </form>
             </div>
+
+            <!-- 3. Google Authenticator'ni ulash (birinchi kirish yoki reset'dan keyin) yoki 4. kod -->
+            <div class="entry__main" v-else :key="stage">
+              <h2 class="entry__welcome">
+                {{
+                  $t(
+                    stage === "TOTP_SETUP"
+                      ? "devPanel.twoFactor.setupTitle"
+                      : "devPanel.twoFactor.codeTitle",
+                  )
+                }}
+              </h2>
+              <p class="entry__hint">
+                {{
+                  $t(
+                    stage === "TOTP_SETUP"
+                      ? "devPanel.twoFactor.setupHint"
+                      : "devPanel.twoFactor.codeHint",
+                  )
+                }}
+              </p>
+
+              <div v-if="stage === 'TOTP_SETUP' && setup" class="totp-setup">
+                <img
+                  v-if="qrImage"
+                  :src="qrImage"
+                  :alt="$t('devPanel.twoFactor.qrAlt')"
+                  class="totp-setup__qr"
+                  width="200"
+                  height="200"
+                />
+                <div class="totp-setup__manual">
+                  <span class="field__label">{{
+                    $t("devPanel.twoFactor.manualKey")
+                  }}</span>
+                  <code>{{ groupedSecret }}</code>
+                </div>
+              </div>
+
+              <Transition name="alert">
+                <div class="entry__errors" v-if="errorText" role="alert">
+                  <p>{{ errorText }}</p>
+                </div>
+              </Transition>
+
+              <form class="entry__form" @submit.prevent="verifyCode">
+                <label class="field">
+                  <span class="field__label">{{
+                    $t("devPanel.twoFactor.code")
+                  }}</span>
+                  <input
+                    ref="codeInput"
+                    v-model="code"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9 ]{6,7}"
+                    maxlength="7"
+                    placeholder="123 456"
+                    class="field__input totp-code"
+                    required
+                  />
+                </label>
+                <button class="entry__submit" type="submit" :disabled="loading">
+                  <span
+                    v-if="loading"
+                    class="entry__spinner"
+                    aria-hidden="true"
+                  />
+                  {{
+                    $t(
+                      stage === "TOTP_SETUP"
+                        ? "devPanel.twoFactor.confirm"
+                        : "devPanel.submit",
+                    )
+                  }}
+                </button>
+              </form>
+            </div>
           </Transition>
         </section>
 
@@ -178,46 +255,80 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { ElMessage } from "element-plus";
 import { Hide, View } from "@element-plus/icons-vue";
 import { useI18n } from "vue-i18n";
+import QRCode from "qrcode";
 import DevDashboard from "./DevDashboard.vue";
-import { IDevCredentials } from "../dev.types";
+import { IDevLoginState, TDevLoginStage } from "../dev.types";
 import { useDevApi } from "../dev.api";
 import { useDevStore } from "../dev.store";
 import { devErrorMessage } from "../dev.utils";
 
 const { t } = useI18n();
-const { AUTH, GET_ME, CHANGE_PASSWORD } = useDevApi();
+const {
+  LOGIN,
+  GET_LOGIN_STATE,
+  LOGIN_NEW_PASSWORD,
+  LOGIN_CODE,
+  LOGOUT,
+  GET_ME,
+} = useDevApi();
 const store = useDevStore();
-const { credentials, rememberMe, account } = storeToRefs(store);
+const { account } = storeToRefs(store);
 
 const login = ref("");
 const password = ref("");
 const newPassword = ref("");
+const code = ref("");
 const showPassword = ref(false);
 const errorText = ref("");
 const loading = ref(false);
-const authenticated = computed(() => !!account.value);
-// Vaqtinchalik parol almashtirilmaguncha backend boshqa endpointlarni bermaydi
-const showDashboard = computed(
-  () => authenticated.value && !account.value.mustChangePassword,
+// null — hali parol kiritilmagan; boshqasi — backend'dagi tugallanmagan login bosqichi
+const stage = ref<Exclude<TDevLoginStage, "ACTIVE"> | null>(null);
+const setup = ref<IDevLoginState["setup"]>(null);
+const qrImage = ref("");
+const codeInput = ref<HTMLInputElement>();
+
+const authenticated = computed(() => !!stage.value);
+const showDashboard = computed(() => !!account.value);
+
+// Qo'lda kiritish oson bo'lsin: ABCD EFGH IJKL ...
+const groupedSecret = computed(
+  () => setup.value?.secret.match(/.{1,4}/g)?.join(" ") ?? "",
 );
 
-const authenticate = async (auth: IDevCredentials) => {
+// QR brauzerning o'zida chiziladi — kalit hech qanday tashqi servisga ketmaydi
+watch(setup, async (value) => {
+  qrImage.value = value
+    ? await QRCode.toDataURL(value.uri, { width: 200, margin: 1 })
+    : "";
+});
+
+const applyState = async (state: IDevLoginState) => {
+  errorText.value = "";
+  if (state.stage === "ACTIVE") {
+    account.value = (await GET_ME()).data;
+    stage.value = null;
+    return;
+  }
+  stage.value = state.stage;
+  setup.value = state.setup;
+  code.value = "";
+  if (state.stage !== "PASSWORD_CHANGE") {
+    await nextTick();
+    codeInput.value?.focus();
+  }
+};
+
+const run = async (action: () => Promise<void>) => {
   loading.value = true;
   errorText.value = "";
   try {
-    // Avval /auth: noto'g'ri parolda brauzerning Basic oynasi chiqmasligi uchun.
-    // Parol to'g'ri bo'lsa /me ham 401 bermaydi
-    await AUTH(auth);
-    const { data } = await GET_ME(auth);
-    store.setCredentials(auth);
-    account.value = data;
+    await action();
   } catch (error) {
-    store.reset();
     errorText.value = await devErrorMessage(error);
   } finally {
     loading.value = false;
@@ -225,46 +336,99 @@ const authenticate = async (auth: IDevCredentials) => {
 };
 
 const submit = () =>
-  authenticate({ username: login.value.trim(), password: password.value });
+  run(async () => {
+    const { data } = await LOGIN(login.value.trim(), password.value);
+    password.value = "";
+    await applyState(data);
+  });
 
-const changePassword = async () => {
-  loading.value = true;
-  errorText.value = "";
-  try {
-    await CHANGE_PASSWORD(credentials.value, {
-      currentPassword: credentials.value.password,
-      newPassword: newPassword.value,
-    });
-    ElMessage.success(t("devPanel.passwordChanged"));
-    const auth = { ...credentials.value, password: newPassword.value };
+const changePassword = () =>
+  run(async () => {
+    const { data } = await LOGIN_NEW_PASSWORD(newPassword.value);
     newPassword.value = "";
-    await authenticate(auth);
-  } catch (error) {
-    errorText.value = await devErrorMessage(error);
-  } finally {
-    loading.value = false;
-  }
-};
+    ElMessage.success(t("devPanel.passwordChanged"));
+    await applyState(data);
+  });
 
-const logout = () => {
+const verifyCode = () =>
+  run(async () => {
+    const { data } = await LOGIN_CODE(code.value.replace(/\s/g, ""));
+    if (stage.value === "TOTP_SETUP")
+      ElMessage.success(t("devPanel.twoFactor.enabled"));
+    stage.value = null;
+    setup.value = null;
+    account.value = data;
+  });
+
+const logout = async () => {
+  try {
+    await LOGOUT();
+  } catch {
+    // sessiya allaqachon tugagan bo'lsa ham login sahifasiga qaytamiz
+  }
   store.reset();
+  stage.value = null;
+  setup.value = null;
   login.value = "";
   password.value = "";
   newPassword.value = "";
+  code.value = "";
   showPassword.value = false;
   errorText.value = "";
 };
 
-onMounted(() => {
-  const auth = credentials.value;
-  if (auth) {
-    login.value = auth.username;
-    authenticate(auth);
+// Sahifa yangilanganda: cookie hali amal qilsa — panel, tugallanmagan login bo'lsa — o'sha bosqich
+onMounted(async () => {
+  try {
+    account.value = (await GET_ME()).data;
+  } catch {
+    try {
+      await applyState((await GET_LOGIN_STATE()).data);
+    } catch {
+      // sessiya yo'q — login formasi
+    }
   }
 });
 </script>
 
 <style scoped>
+.totp-setup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0 16px;
+}
+
+.totp-setup__qr {
+  padding: 8px;
+  border: 1px solid #dde4ee;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.totp-setup__manual {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.totp-setup__manual code {
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  user-select: all;
+}
+
+.totp-code {
+  font-size: 22px;
+  letter-spacing: 0.3em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .devlogin {
   --ink: #071e33;
   --ink-soft: #0e2f4c;

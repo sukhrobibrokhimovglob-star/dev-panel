@@ -5,7 +5,11 @@ import java.time.LocalDateTime;
 
 /**
  * A login of the dev panel. The username is stored lower-case; the password only as a BCrypt
- * hash, which is never serialized.
+ * hash. Neither the hash nor the authenticator secret is ever serialized.
+ *
+ * @param totpSecret     Base32 secret of the authenticator app; set while the account is setting
+ *                       up two-factor login, confirmed once {@code totpEnabled} is true
+ * @param totpLastStep   the 30-second step of the last accepted code, so it cannot be reused
  */
 public record DevAccount(
     Long id,
@@ -16,7 +20,10 @@ public record DevAccount(
     boolean enabled,
     boolean mustChangePassword,
     LocalDateTime createdAt,
-    String createdBy) {
+    String createdBy,
+    @JsonIgnore String totpSecret,
+    boolean totpEnabled,
+    @JsonIgnore long totpLastStep) {
 
   public boolean canWrite() {
     return access == DevAccess.READ_WRITE;
@@ -24,11 +31,11 @@ public record DevAccount(
 
   DevAccount withPassword(String hash, boolean mustChange) {
     return new DevAccount(id, username, hash, role, access, enabled, mustChange, createdAt,
-        createdBy);
+        createdBy, totpSecret, totpEnabled, totpLastStep);
   }
 
   DevAccount withRoleAccessEnabled(DevRole newRole, DevAccess newAccess, boolean newEnabled) {
     return new DevAccount(id, username, passwordHash, newRole, newAccess, newEnabled,
-        mustChangePassword, createdAt, createdBy);
+        mustChangePassword, createdAt, createdBy, totpSecret, totpEnabled, totpLastStep);
   }
 }
