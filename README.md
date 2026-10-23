@@ -35,7 +35,8 @@ Add JitPack and the dependency to `pom.xml`:
 </dependency>
 ```
 
-Turn it on in `application.properties`:
+Turn it on in a `src/main/resources/devpanel.properties` of its own (the starter loads it by
+itself, so `application.properties` stays untouched), or in `application.properties`:
 
 ```properties
 devpanel.enabled=true
@@ -54,6 +55,10 @@ than committing a password.
   account is logged out and scans a new QR code at the next login.
 - The super admin: start the application once with
   `devpanel.super-admin.reset-two-factor=true`, set up the app again, then remove the property.
+
+Settings in `devpanel.properties` (or `devpanel.yml`) have the lowest priority: a `devpanel.*`
+value in `application.properties`, an environment variable or a command-line argument overrides
+them.
 
 ## Requirements
 
