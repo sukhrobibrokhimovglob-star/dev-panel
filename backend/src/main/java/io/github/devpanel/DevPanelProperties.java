@@ -18,6 +18,7 @@ public class DevPanelProperties {
 
   private final SuperAdmin superAdmin = new SuperAdmin();
   private final Session session = new Session();
+  private final TwoFactor twoFactor = new TwoFactor();
   private final Metrics metrics = new Metrics();
   private final Query query = new Query();
   private final Files files = new Files();
@@ -58,6 +59,10 @@ public class DevPanelProperties {
 
   public Session getSession() {
     return session;
+  }
+
+  public TwoFactor getTwoFactor() {
+    return twoFactor;
   }
 
   public Metrics getMetrics() {
@@ -123,6 +128,28 @@ public class DevPanelProperties {
 
     public boolean hasInitialPassword() {
       return initialPassword != null && !initialPassword.isBlank();
+    }
+  }
+
+  public static class TwoFactor {
+
+    /**
+     * How far apart the server's and the phone's clocks may be. The default suits phone clocks;
+     * raise it only while a server clock without time sync is being fixed, since a wider window
+     * makes a guessed code slightly likelier to hit.
+     */
+    private Duration allowedClockDrift = Duration.ofSeconds(30);
+
+    public Duration getAllowedClockDrift() {
+      return allowedClockDrift;
+    }
+
+    public void setAllowedClockDrift(Duration allowedClockDrift) {
+      if (allowedClockDrift.compareTo(Duration.ofMinutes(15)) > 0) {
+        throw new IllegalArgumentException(
+            "devpanel.two-factor.allowed-clock-drift must not exceed 15m; sync the server clock");
+      }
+      this.allowedClockDrift = allowedClockDrift;
     }
   }
 

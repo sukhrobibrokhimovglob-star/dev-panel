@@ -31,7 +31,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.1.2</version>
+  <version>0.1.3</version>
 </dependency>
 ```
 
@@ -48,6 +48,12 @@ initial password. The first login asks you to replace it and to scan a QR code w
 Authenticator (or Authy, Microsoft Authenticator); every later login asks for the 6-digit code.
 Without the property no super admin is created, so set it through an environment variable rather
 than committing a password.
+
+### "The code is right, but the server's clock is ... off"
+
+Authenticator codes depend on the time, so the server's clock must be correct. Turn on time sync
+on the server (`sudo timedatectl set-ntp true`). Until that is done,
+`devpanel.two-factor.allowed-clock-drift=10m` tolerates the difference.
 
 ### Lost phone
 
@@ -93,6 +99,7 @@ them.
 | `devpanel.super-admin.username` | `superadmin` | |
 | `devpanel.super-admin.initial-password` | (empty) | Only used while no super admin exists |
 | `devpanel.super-admin.reset-two-factor` | `false` | Super admin lost the phone; remove after use |
+| `devpanel.two-factor.allowed-clock-drift` | `30s` | Raise (max `15m`) only while a server clock is being synced |
 | `devpanel.session.timeout` | `8h` | A login ends this long after it started |
 | `devpanel.session.idle-timeout` | `30m` | A login ends after this long without requests |
 | `devpanel.metrics.sample-interval` | `15s` | History sample rate |

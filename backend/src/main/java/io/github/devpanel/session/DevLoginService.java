@@ -27,22 +27,28 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  */
 public class DevLoginService {
 
+  /** How far the clock check of a refused code looks: 30 minutes either way. */
+  private static final int CLOCK_CHECK_STEPS = 60;
+
   private final DevAccountRepository accounts;
   private final DevAccountService accountService;
   private final DevSessions sessions;
   private final DevLoginAttempts loginAttempts;
   private final PasswordEncoder passwordEncoder;
   private final String issuer;
+  /** Steps of clock drift tolerated, from {@code devpanel.two-factor.allowed-clock-drift}. */
+  private final int window;
 
   public DevLoginService(DevAccountRepository accounts, DevAccountService accountService,
       DevSessions sessions, DevLoginAttempts loginAttempts, PasswordEncoder passwordEncoder,
-      String issuer) {
+      String issuer, Duration allowedClockDrift) {
     this.accounts = accounts;
     this.accountService = accountService;
     this.sessions = sessions;
     this.loginAttempts = loginAttempts;
     this.passwordEncoder = passwordEncoder;
     this.issuer = issuer;
+    this.window = Totp.stepsFor(allowedClockDrift);
   }
 
   public LoginState login(String username, String password, HttpServletRequest request,
@@ -89,10 +95,13 @@ public class DevLoginService {
     }
     DevAccount account = account(session);
     requireNotLocked(account.username());
-    long step = Totp.matchingStep(account.totpSecret(), code, System.currentTimeMillis());
+    long now = System.currentTimeMillis();
+    long step = Totp.matchingStep(account.totpSecret(), code, now, window);
     if (step < 0 || !accounts.useTotpStep(account.id(), step)) {
       loginAttempts.onFailure(account.username());
-      throw DevPanelException.badRequest("Invalid or already used code");
+      throw DevPanelException.badRequest(step < 0
+          ? clockHint(account.totpSecret(), code, now)
+          : "This code was already used; wait for the next one");
     }
     if (session.stage() == DevSessionStage.TOTP_SETUP) {
       accounts.confirmTotp(account.id());
@@ -100,6 +109,23 @@ public class DevLoginService {
     loginAttempts.onSuccess(account.username());
     sessions.advance(session, DevSessionStage.ACTIVE, request, response);
     return accounts.findById(account.id()).orElseThrow();
+  }
+
+  /**
+   * A wrong code is usually a typo, but when it is the right code for a time a few minutes off,
+   * the server's clock is wrong (the phone's is set automatically). Saying so saves a long hunt.
+   * The code is still refused.
+   */
+  private static String clockHint(String secret, String code, long now) {
+    long offered = Totp.matchingStep(secret, code, now, CLOCK_CHECK_STEPS);
+    if (offered < 0) {
+      return "Invalid code";
+    }
+    long minutes = Math.round((Totp.stepAt(now) - offered) * Totp.PERIOD_SECONDS / 60.0);
+    String direction = minutes >= 0 ? "ahead" : "behind";
+    return "The code is right, but the server's clock is about " + Math.abs(minutes) + " min "
+        + direction + ". Ask DevOps to sync it (timedatectl set-ntp true), or allow it for now"
+        + " with devpanel.two-factor.allowed-clock-drift=" + (Math.abs(minutes) + 1) + "m";
   }
 
   private LoginState state(DevAccount account, DevSessionStage stage) {

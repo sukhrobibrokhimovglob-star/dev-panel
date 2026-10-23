@@ -17,7 +17,7 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class Totp {
 
-  static final int PERIOD_SECONDS = 30;
+  public static final int PERIOD_SECONDS = 30;
   private static final int DIGITS = 6;
   private static final int WINDOW = 1;
   private static final int SECRET_BYTES = 20;
@@ -46,6 +46,11 @@ public final class Totp {
    *     cannot be used twice.
    */
   public static long matchingStep(String secret, String code, long nowMillis) {
+    return matchingStep(secret, code, nowMillis, WINDOW);
+  }
+
+  /** Like {@link #matchingStep(String, String, long)}, tolerating {@code window} steps of drift. */
+  public static long matchingStep(String secret, String code, long nowMillis, int window) {
     if (secret == null || code == null) {
       return -1;
     }
@@ -55,13 +60,18 @@ public final class Totp {
     }
     byte[] key = unbase32(secret);
     long current = nowMillis / 1000 / PERIOD_SECONDS;
-    for (long step = current - WINDOW; step <= current + WINDOW; step++) {
+    for (long step = current - window; step <= current + window; step++) {
       if (MessageDigest.isEqual(code(key, step).getBytes(StandardCharsets.US_ASCII),
           digits.getBytes(StandardCharsets.US_ASCII))) {
         return step;
       }
     }
     return -1;
+  }
+
+  /** How many 30-second steps a clock difference of {@code drift} covers (at least 1). */
+  public static int stepsFor(java.time.Duration drift) {
+    return (int) Math.max(WINDOW, (drift.toSeconds() + PERIOD_SECONDS - 1) / PERIOD_SECONDS);
   }
 
   /** The code an authenticator app shows for {@code step}; used by tests. */

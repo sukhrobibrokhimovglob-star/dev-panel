@@ -116,7 +116,8 @@ public class DevPanelAutoConfiguration {
         ? "Dev Panel"
         : "Dev Panel (" + application + ")";
     return new DevLoginService(devPanelAccountRepository, devPanelAccountService,
-        devPanelSessions, new DevLoginAttempts(), passwordEncoder, issuer);
+        devPanelSessions, new DevLoginAttempts(), passwordEncoder, issuer,
+        properties.getTwoFactor().getAllowedClockDrift());
   }
 
   @Bean

@@ -30,6 +30,18 @@ class TotpTest {
   }
 
   @Test
+  void aWiderWindowAcceptsAServerClockMinutesOff() {
+    String secret = Totp.newSecret();
+    long phone = 1_700_000_000_000L;
+    long server = phone + 5 * 60_000L;
+    String code = Totp.codeForStep(secret, Totp.stepAt(phone));
+    assertThat(Totp.matchingStep(secret, code, server)).isEqualTo(-1);
+    assertThat(Totp.matchingStep(secret, code, server,
+        Totp.stepsFor(java.time.Duration.ofMinutes(6)))).isEqualTo(Totp.stepAt(phone));
+    assertThat(Totp.stepsFor(java.time.Duration.ofSeconds(30))).isEqualTo(1);
+  }
+
+  @Test
   void base32RoundTrips() {
     byte[] bytes = {1, 2, 3, (byte) 250, 99, 0, 17};
     assertThat(Totp.unbase32(Totp.base32(bytes))).isEqualTo(bytes);
