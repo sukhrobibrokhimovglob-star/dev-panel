@@ -52,6 +52,8 @@ class DevPanelIntegrationTest {
   void servesTheUiWithoutLogin() {
     ResponseEntity<String> redirect = rest.getForEntity("/dev-panel", String.class);
     assertThat(redirect.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+    // Relative, so a proxy prefix such as /api is kept
+    assertThat(redirect.getHeaders().getFirst(HttpHeaders.LOCATION)).isEqualTo("dev-panel/");
 
     ResponseEntity<String> page = rest.getForEntity("/dev-panel/", String.class);
     assertThat(page.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -93,7 +95,7 @@ class DevPanelIntegrationTest {
         Map.of("username", "superadmin", "password", "Initial-Pass-1"));
     assertThat(login.getBody().get("stage")).isEqualTo("PASSWORD_CHANGE");
     assertThat(login.getHeaders().getFirst(HttpHeaders.SET_COOKIE))
-        .contains("HttpOnly").contains("SameSite=Strict").contains("Path=/dev-panel");
+        .contains("HttpOnly").contains("SameSite=Strict").contains("Path=/;");
 
     // Nothing but the login steps until it is finished
     assertThat(admin.get("/metrics").getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);

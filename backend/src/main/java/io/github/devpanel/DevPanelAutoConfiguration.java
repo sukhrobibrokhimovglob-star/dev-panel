@@ -27,6 +27,7 @@ import io.github.devpanel.support.TraceIds;
 import io.github.devpanel.web.DevPanelAuthFilter;
 import io.github.devpanel.web.DevPanelExceptionHandler;
 import io.github.devpanel.web.DevPanelTraceIdFilter;
+import io.github.devpanel.web.DevPanelUiController;
 import io.github.devpanel.web.DevPanelWebConfigurer;
 import java.util.List;
 import javax.sql.DataSource;
@@ -62,7 +63,7 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 @ConditionalOnProperty(prefix = "devpanel", name = "enabled", havingValue = "true")
 @ConditionalOnSingleCandidate(DataSource.class)
 @EnableConfigurationProperties(DevPanelProperties.class)
-@Import({DevPanelExceptionHandler.class, DevLoginController.class, DevAccountController.class,
+@Import({DevPanelExceptionHandler.class, DevPanelUiController.class, DevLoginController.class, DevAccountController.class,
     DevMetricsController.class,
     DevPanelAutoConfiguration.AuditConfiguration.class,
     DevPanelAutoConfiguration.QueryConfiguration.class,
@@ -95,8 +96,8 @@ public class DevPanelAutoConfiguration {
 
   @Bean
   DevSessions devPanelSessions() {
-    return new DevSessions(jdbcTemplate, properties.getBasePath(),
-        properties.getSession().getTimeout(), properties.getSession().getIdleTimeout());
+    return new DevSessions(jdbcTemplate, properties.getSession().getTimeout(),
+        properties.getSession().getIdleTimeout());
   }
 
   @Bean

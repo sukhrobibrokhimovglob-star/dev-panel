@@ -31,15 +31,12 @@ public class DevSessions {
   private static final int TOKEN_BYTES = 32;
 
   private final JdbcTemplate jdbcTemplate;
-  private final String cookiePath;
   private final Duration timeout;
   private final Duration idleTimeout;
   private final SecureRandom random = new SecureRandom();
 
-  public DevSessions(JdbcTemplate jdbcTemplate, String basePath, Duration timeout,
-      Duration idleTimeout) {
+  public DevSessions(JdbcTemplate jdbcTemplate, Duration timeout, Duration idleTimeout) {
     this.jdbcTemplate = jdbcTemplate;
-    this.cookiePath = basePath;
     this.timeout = timeout;
     this.idleTimeout = idleTimeout;
   }
@@ -151,12 +148,15 @@ public class DevSessions {
   /**
    * Written by hand because the servlet API of Boot 2.7 has no {@code SameSite}. Marked
    * {@code Secure} on HTTPS, including behind a proxy that sets {@code X-Forwarded-Proto}.
+   *
+   * <p>{@code Path=/} rather than the panel's path: behind a proxy that adds a prefix (nginx
+   * forwarding {@code /api/...} to the backend without it) the browser sees the panel at
+   * {@code /api/dev-panel/}, and a cookie for {@code /dev-panel} would never be sent back.
    */
   private void writeCookie(HttpServletRequest request, HttpServletResponse response, String value,
       int maxAge) {
     StringBuilder cookie = new StringBuilder(COOKIE).append('=').append(value)
-        .append("; Path=").append(request.getContextPath()).append(cookiePath)
-        .append("; HttpOnly; SameSite=Strict");
+        .append("; Path=/; HttpOnly; SameSite=Strict");
     if (maxAge >= 0) {
       cookie.append("; Max-Age=").append(maxAge);
     }

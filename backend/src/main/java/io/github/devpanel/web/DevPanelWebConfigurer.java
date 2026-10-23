@@ -5,7 +5,6 @@ import java.util.List;
 import org.springframework.http.CacheControl;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
-import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.EncodedResourceResolver;
 import org.springframework.web.servlet.resource.PathResourceResolver;
@@ -42,13 +41,6 @@ public class DevPanelWebConfigurer implements WebMvcConfigurer {
         .resourceChain(true)
         .addResolver(new EncodedResourceResolver())
         .addResolver(new PathResourceResolver());
-  }
-
-  @Override
-  public void addViewControllers(ViewControllerRegistry registry) {
-    // Without the trailing slash the relative "api" and "assets/" URLs would miss the base path
-    registry.addRedirectViewController(basePath, basePath + "/");
-    registry.addViewController(basePath + "/").setViewName("forward:" + basePath + "/index.html");
   }
 
   @Override
