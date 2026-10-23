@@ -10,7 +10,9 @@ const walk = (dir) =>
     return statSync(path).isDirectory() ? walk(path) : [path];
   });
 
-for (const file of walk("dist")) {
+const OUT = "../backend/src/main/resources/META-INF/devpanel-ui";
+
+for (const file of walk(OUT)) {
   if (/\.(js|css|html|svg|json)$/.test(file)) {
     writeFileSync(`${file}.gz`, gzipSync(readFileSync(file), { level: 9 }));
   }

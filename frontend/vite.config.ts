@@ -23,7 +23,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "dist",
+    // Committed, so the jar builds without Node (see backend/pom.xml, profile "ui")
+    outDir: "../backend/src/main/resources/META-INF/devpanel-ui",
     emptyOutDir: true,
     sourcemap: false,
     chunkSizeWarningLimit: 2000,

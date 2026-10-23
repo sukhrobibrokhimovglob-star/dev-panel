@@ -6,7 +6,7 @@
 
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <packaging>jar</packaging>
 
   <name>Dev Panel Spring Boot Starter</name>
@@ -34,8 +34,6 @@
     <spring-boot.version>2.7.18</spring-boot.version>
     <poi.version>5.2.3</poi.version>
     <node.version>v22.12.0</node.version>
-    <!-- -Dskip.ui=true builds the jar without rebuilding the Vue UI (it keeps the last build). -->
-    <skip.ui>false</skip.ui>
   </properties>
 
   <dependencyManagement>
@@ -143,68 +141,7 @@
         </configuration>
       </plugin>
 
-      <plugin>
-        <groupId>com.github.eirslett</groupId>
-        <artifactId>frontend-maven-plugin</artifactId>
-        <version>1.15.1</version>
-        <configuration>
-          <workingDirectory>${project.basedir}/../frontend</workingDirectory>
-          <installDirectory>${project.build.directory}</installDirectory>
-          <skip>${skip.ui}</skip>
-        </configuration>
-        <executions>
-          <execution>
-            <id>install-node</id>
-            <goals>
-              <goal>install-node-and-npm</goal>
-            </goals>
-            <configuration>
-              <nodeVersion>${node.version}</nodeVersion>
-            </configuration>
-          </execution>
-          <execution>
-            <id>npm-ci</id>
-            <goals>
-              <goal>npm</goal>
-            </goals>
-            <configuration>
-              <arguments>ci --no-audit --no-fund</arguments>
-            </configuration>
-          </execution>
-          <execution>
-            <id>npm-build</id>
-            <goals>
-              <goal>npm</goal>
-            </goals>
-            <configuration>
-              <arguments>run build</arguments>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
 
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-resources-plugin</artifactId>
-        <version>3.3.1</version>
-        <executions>
-          <execution>
-            <id>copy-ui</id>
-            <phase>process-resources</phase>
-            <goals>
-              <goal>copy-resources</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${project.build.outputDirectory}/META-INF/devpanel-ui</outputDirectory>
-              <resources>
-                <resource>
-                  <directory>${project.basedir}/../frontend/dist</directory>
-                </resource>
-              </resources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
 
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -240,4 +177,58 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      The built UI is committed under src/main/resources/META-INF/devpanel-ui, so a normal build
+      (and JitPack, whose build machines cannot run current Node) needs no Node at all.
+      After changing frontend/, rebuild it with: ./mvnw -Pui install (or npm run build in frontend/)
+      and commit the result.
+    -->
+    <profile>
+      <id>ui</id>
+      <build>
+        <plugins>
+            <plugin>
+              <groupId>com.github.eirslett</groupId>
+              <artifactId>frontend-maven-plugin</artifactId>
+              <version>1.15.1</version>
+              <configuration>
+                <workingDirectory>${project.basedir}/../frontend</workingDirectory>
+                <installDirectory>${project.build.directory}</installDirectory>
+              </configuration>
+              <executions>
+                <execution>
+                  <id>install-node</id>
+                  <goals>
+                    <goal>install-node-and-npm</goal>
+                  </goals>
+                  <configuration>
+                    <nodeVersion>${node.version}</nodeVersion>
+                  </configuration>
+                </execution>
+                <execution>
+                  <id>npm-ci</id>
+                  <goals>
+                    <goal>npm</goal>
+                  </goals>
+                  <configuration>
+                    <arguments>ci --no-audit --no-fund</arguments>
+                  </configuration>
+                </execution>
+                <execution>
+                  <id>npm-build</id>
+                  <goals>
+                    <goal>npm</goal>
+                  </goals>
+                  <configuration>
+                    <arguments>run build</arguments>
+                  </configuration>
+                </execution>
+              </executions>
+            </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

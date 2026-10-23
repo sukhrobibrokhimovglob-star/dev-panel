@@ -31,7 +31,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
 </dependency>
 ```
 
@@ -131,10 +131,13 @@ them.
 ## Development
 
 ```bash
-./mvnw install              # builds the UI (downloads Node) and the jar, runs the tests
-./mvnw -Dskip.ui=true test  # backend only, reuses the last UI build
+./mvnw install              # the jar with the committed UI build, runs the tests
+./mvnw -Pui install         # also rebuilds the UI first (downloads Node); commit the result
 cd frontend && npm run dev  # UI on http://localhost:5180, proxied to a backend on :8080
 ```
+
+The built UI lives in `backend/src/main/resources/META-INF/devpanel-ui` and is committed, so
+JitPack builds without Node. Rebuild and commit it whenever `frontend/` changes.
 
 Releasing: push a git tag such as `0.1.1` (no `v` prefix, so the JitPack version matches the pom
 version); the first request for it on jitpack.io triggers the build.
