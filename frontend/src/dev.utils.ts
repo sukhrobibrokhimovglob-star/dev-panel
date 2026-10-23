@@ -52,7 +52,8 @@ export const formatDateTime = (value: string) =>
  */
 export const devErrorMessage = async (error: unknown): Promise<string> => {
   if (axios.isAxiosError(error)) {
-    if (error.response?.status === 401)
+    // Faqat parol bosqichida "login yoki parol noto'g'ri"; boshqa 401 larda backend sababini aytadi
+    if (error.response?.status === 401 && error.config?.url === "/login")
       return translate("devPanel.invalidCredentials");
     const data = error.response?.data;
     if (data instanceof Blob) {
@@ -107,4 +108,52 @@ export const copyToClipboard = async (text: string) => {
   } catch {
     ElMessage.error(translate("devPanel.serverError"));
   }
+};
+
+// ---------- 0.2.0: monitoring yordamchilari ----------
+
+export const STATUS_COLORS: Record<string, string> = {
+  OK: "#3ec972",
+  WARNING: "#e6a23c",
+  CRITICAL: "#d14343",
+  UNKNOWN: "#909399",
+};
+
+export const statusTag = (status: string) =>
+  status === "CRITICAL"
+    ? "danger"
+    : status === "WARNING"
+      ? "warning"
+      : status === "OK"
+        ? "success"
+        : "info";
+
+export const formatMs = (ms: number | null | undefined) => {
+  if (ms == null || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
+  if (ms < 3600000) return `${Math.round(ms / 60000)} min`;
+  return `${(ms / 3600000).toFixed(1)} h`;
+};
+
+export const formatTime = (value: string | number | null | undefined) =>
+  value == null ? "—" : moment(value).format("DD.MM HH:mm:ss");
+
+export const fromNow = (value: string | number | null | undefined) =>
+  value == null ? "—" : moment(value).fromNow();
+
+// Har N soniyada qayta yuklash; tab ko'rinmay qolsa so'rov yubormaydi
+export const useAutoRefresh = (load: () => unknown, seconds: number) => {
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const start = () => {
+    stop();
+    timer = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, seconds * 1000);
+  };
+  const stop = () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+  };
+  return { start, stop };
 };

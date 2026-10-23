@@ -45,7 +45,7 @@ public class DevMetricsService {
         os.getFreeMemorySize());
   }
 
-  static List<Disk> disks() {
+  public static List<Disk> disks() {
     return Arrays.stream(File.listRoots())
         .map(root -> new Disk(root.getAbsolutePath(), root.getTotalSpace(), root.getUsableSpace()))
         .toList();
@@ -58,7 +58,7 @@ public class DevMetricsService {
         threads.getPeakThreadCount(), deadlocked == null ? 0 : deadlocked.length);
   }
 
-  static OperatingSystemMXBean os() {
+  public static OperatingSystemMXBean os() {
     return (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
   }
 

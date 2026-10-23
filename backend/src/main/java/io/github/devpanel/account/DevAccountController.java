@@ -4,13 +4,19 @@ import io.github.devpanel.account.DevAccountRequests.Create;
 import io.github.devpanel.account.DevAccountRequests.Credentials;
 import io.github.devpanel.account.DevAccountRequests.PasswordChange;
 import io.github.devpanel.account.DevAccountRequests.Update;
+import io.github.devpanel.session.DevSessions;
+import io.github.devpanel.session.DevSessions.Session;
+import io.github.devpanel.session.DevSessions.SessionView;
+import io.github.devpanel.support.DevPanelException;
 import io.github.devpanel.web.DevPanelApi;
 import io.github.devpanel.web.DevPanelPaths;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,9 +36,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class DevAccountController {
 
   private final DevAccountService accountService;
+  private final DevSessions sessions;
 
-  public DevAccountController(DevAccountService accountService) {
+  public DevAccountController(DevAccountService accountService, DevSessions sessions) {
     this.accountService = accountService;
+    this.sessions = sessions;
   }
 
   @GetMapping("/me")
@@ -44,6 +52,25 @@ public class DevAccountController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void changePassword(DevAccount actor, @RequestBody PasswordChange request) {
     accountService.changePassword(actor, request);
+  }
+
+  /** Where this account is logged in, so a stranger's session stands out and can be ended. */
+  @GetMapping("/me/sessions")
+  public List<SessionView> sessions(DevAccount actor, Session session) {
+    return sessions.list(actor.id(), session.tokenHash());
+  }
+
+  @DeleteMapping("/me/sessions/{id}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void endSession(DevAccount actor, @PathVariable String id) {
+    if (!sessions.endOne(actor.id(), id)) {
+      throw DevPanelException.notFound("No such session");
+    }
+  }
+
+  @PostMapping("/me/sessions/end-others")
+  public Map<String, Integer> endOtherSessions(DevAccount actor, Session session) {
+    return Map.of("ended", sessions.endOthers(actor.id(), session.tokenHash()));
   }
 
   @GetMapping("/accounts")

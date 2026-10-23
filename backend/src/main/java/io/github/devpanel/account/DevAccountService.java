@@ -162,6 +162,20 @@ public class DevAccountService {
     return repository.findById(id).orElseThrow();
   }
 
+  /**
+   * For {@code devpanel.super-admin.reset=true}: someone else took over the super admin (changed
+   * its password and set up their own phone). Back to the initial password, which must be changed
+   * again, and 2FA set up again.
+   */
+  public boolean resetSuperAdmin(String initialPassword) {
+    return repository.findByRole(DevRole.SUPER_ADMIN).map(superAdmin -> {
+      repository.update(superAdmin.withPassword(passwordEncoder.encode(initialPassword), true));
+      repository.resetTotp(superAdmin.id());
+      sessions.endAll(superAdmin.id());
+      return true;
+    }).orElse(false);
+  }
+
   /** For {@code devpanel.super-admin.reset-two-factor=true}: the super admin lost the phone. */
   public boolean resetSuperAdminTwoFactor() {
     return repository.findByRole(DevRole.SUPER_ADMIN).map(superAdmin -> {
@@ -183,7 +197,7 @@ public class DevAccountService {
   private DevAccount newAccount(String username, DevRole role, DevAccess access,
       String temporaryPassword, String createdBy) {
     return new DevAccount(null, username, passwordEncoder.encode(temporaryPassword), role, access,
-        true, true, LocalDateTime.now(), createdBy, null, false, 0);
+        true, true, LocalDateTime.now(), createdBy, null, false, 0, null, null);
   }
 
   private String temporaryPassword() {

@@ -15,7 +15,8 @@ import org.springframework.jdbc.core.RowMapper;
 public class DevAccountRepository {
 
   private static final String COLUMNS = "id, username, password_hash, role, access, enabled,"
-      + " must_change_password, created_at, created_by, totp_secret, totp_enabled, totp_last_step";
+      + " must_change_password, created_at, created_by, totp_secret, totp_enabled, totp_last_step,"
+      + " totp_enabled_at, totp_enabled_ip";
 
   private static final RowMapper<DevAccount> ROW = DevAccountRepository::map;
 
@@ -79,13 +80,15 @@ public class DevAccountRepository {
         + " totp_last_step = 0 WHERE id = ?", secret, id);
   }
 
-  public void confirmTotp(long id) {
-    jdbcTemplate.update("UPDATE devpanel_account SET totp_enabled = TRUE WHERE id = ?", id);
+  public void confirmTotp(long id, String clientIp) {
+    jdbcTemplate.update("UPDATE devpanel_account SET totp_enabled = TRUE, totp_enabled_at = ?,"
+        + " totp_enabled_ip = ? WHERE id = ?", Timestamp.valueOf(java.time.LocalDateTime.now()),
+        clientIp, id);
   }
 
   public void resetTotp(long id) {
     jdbcTemplate.update("UPDATE devpanel_account SET totp_secret = NULL, totp_enabled = FALSE,"
-        + " totp_last_step = 0 WHERE id = ?", id);
+        + " totp_last_step = 0, totp_enabled_at = NULL, totp_enabled_ip = NULL WHERE id = ?", id);
   }
 
   /**
@@ -116,6 +119,9 @@ public class DevAccountRepository {
         rs.getString("created_by"),
         rs.getString("totp_secret"),
         rs.getBoolean("totp_enabled"),
-        rs.getLong("totp_last_step"));
+        rs.getLong("totp_last_step"),
+        rs.getTimestamp("totp_enabled_at") == null ? null
+            : rs.getTimestamp("totp_enabled_at").toLocalDateTime(),
+        rs.getString("totp_enabled_ip"));
   }
 }

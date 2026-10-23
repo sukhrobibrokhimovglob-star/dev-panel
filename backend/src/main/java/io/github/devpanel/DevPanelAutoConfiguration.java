@@ -70,7 +70,8 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
     DevPanelAutoConfiguration.FilesConfiguration.class,
     DevPanelAutoConfiguration.HikariConfiguration.class,
     DevPanelAutoConfiguration.ExcelConfiguration.class,
-    DevPanelAutoConfiguration.SecurityConfiguration.class})
+    DevPanelAutoConfiguration.SecurityConfiguration.class,
+    io.github.devpanel.insight.InsightsConfiguration.class})
 public class DevPanelAutoConfiguration {
 
   /** Ahead of Spring Security's chain (order -100) and of most application filters. */

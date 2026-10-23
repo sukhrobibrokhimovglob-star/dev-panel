@@ -14,15 +14,20 @@
   2FA reset by the super admin (Basic auth removed)
 - Tests: filter-chain security host, adapter security host, SQL validation, TOTP RFC vectors
 
+## Done in 0.2.0
+- Health page, Telegram/webhook alerts with resolve messages and a daily summary
+- Memory leak detection (heap after GC trend), GC overhead, thread/class/file trends, histogram
+- PostgreSQL: activity with cancel/kill, slowest statements, table health, unused indexes,
+  connection leaks (Hikari leak detection)
+- API per endpoint with p50/p95/p99 and comparisons, slow requests, N+1 detection
+- Exception groups with "new since deploy"; external services; scheduled jobs; clock check
+- Live logs, runtime log levels, configuration viewer, deploy history
+- Security: fresh 2FA secret per setup login, sessions list, setup time/IP, full super admin reset
+
 ## Next
 1. Publish `0.1.0` on JitPack and switch gp to it
-2. Postgres live view: running queries and locks (`pg_stat_activity`) with cancel; slow queries
-   (`pg_stat_statements`); table and index sizes
-3. Slowest endpoints: p50/p95 per URL from request timings
-4. Runtime log levels (change a package to DEBUG without a redeploy)
-5. Live log tail over SSE
-6. Config viewer with masked secrets; Liquibase/Flyway status
-7. Alerts to Telegram or a webhook (pending connections, disk, error rate)
+2. Liquibase/Flyway status in the config view
+3. Configurable alert thresholds and mute/acknowledge from the panel
 8. `DevPanelModule` extension point for project-specific tabs
 9. Migrate existing in-house panels to the starter, with their project-specific tabs as modules
 10. Spring Boot 3 (jakarta) variant

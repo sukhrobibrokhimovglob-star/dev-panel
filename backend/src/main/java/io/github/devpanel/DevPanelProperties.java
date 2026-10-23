@@ -24,6 +24,8 @@ public class DevPanelProperties {
   private final Files files = new Files();
   private final Audit audit = new Audit();
   private final Trace trace = new Trace();
+  private final Insights insights = new Insights();
+  private final Alerts alerts = new Alerts();
 
   public boolean isEnabled() {
     return enabled;
@@ -85,6 +87,14 @@ public class DevPanelProperties {
     return trace;
   }
 
+  public Insights getInsights() {
+    return insights;
+  }
+
+  public Alerts getAlerts() {
+    return alerts;
+  }
+
   public static class SuperAdmin {
 
     private String username = "superadmin";
@@ -101,6 +111,20 @@ public class DevPanelProperties {
      * authenticator app again at the next login. Remove it again once done.
      */
     private boolean resetTwoFactor;
+
+    /**
+     * When someone else took over the super admin: on startup, sets its password back to
+     * {@code initial-password} (to be changed again) and resets its 2FA. Remove it once done.
+     */
+    private boolean reset;
+
+    public boolean isReset() {
+      return reset;
+    }
+
+    public void setReset(boolean reset) {
+      this.reset = reset;
+    }
 
     public boolean isResetTwoFactor() {
       return resetTwoFactor;
@@ -356,6 +380,136 @@ public class DevPanelProperties {
 
     public void setMdcKey(String mdcKey) {
       this.mdcKey = mdcKey;
+    }
+  }
+
+  public static class Insights {
+
+    /** The monitoring part: health page, API/error/database/job statistics, leak detection. */
+    private boolean enabled = true;
+
+    /** Requests slower than this are listed one by one. */
+    private Duration slowRequest = Duration.ofSeconds(1);
+
+    /** The same SQL statement this often in one request is reported as N+1. */
+    private int nPlusOneThreshold = 20;
+
+    /**
+     * Hikari reports a connection held longer than this, with the code that took it. Only set
+     * when the application did not configure its own; 0 turns it off.
+     */
+    private Duration connectionLeakThreshold = Duration.ofSeconds(60);
+
+    /** Counts runs of {@code @Scheduled} methods (needs AspectJ, as with Spring Data JPA). */
+    private boolean jobs = true;
+
+    /** Whose {@code Date} header the server clock is compared with; empty turns it off. */
+    private String clockReferenceUrl = "https://www.google.com";
+
+    public boolean isEnabled() {
+      return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+      this.enabled = enabled;
+    }
+
+    public Duration getSlowRequest() {
+      return slowRequest;
+    }
+
+    public void setSlowRequest(Duration slowRequest) {
+      this.slowRequest = slowRequest;
+    }
+
+    public int getNPlusOneThreshold() {
+      return nPlusOneThreshold;
+    }
+
+    public void setNPlusOneThreshold(int nPlusOneThreshold) {
+      this.nPlusOneThreshold = nPlusOneThreshold;
+    }
+
+    public Duration getConnectionLeakThreshold() {
+      return connectionLeakThreshold;
+    }
+
+    public void setConnectionLeakThreshold(Duration connectionLeakThreshold) {
+      this.connectionLeakThreshold = connectionLeakThreshold;
+    }
+
+    public boolean isJobs() {
+      return jobs;
+    }
+
+    public void setJobs(boolean jobs) {
+      this.jobs = jobs;
+    }
+
+    public String getClockReferenceUrl() {
+      return clockReferenceUrl;
+    }
+
+    public void setClockReferenceUrl(String clockReferenceUrl) {
+      this.clockReferenceUrl = clockReferenceUrl;
+    }
+  }
+
+  public static class Alerts {
+
+    /** From @BotFather; the bot must be in the chat (or have been messaged by you). */
+    private String telegramBotToken;
+
+    /** Your user id or a group id (negative), e.g. from @userinfobot. */
+    private String telegramChatId;
+
+    /** Gets every alert as JSON (Slack/Teams/own service). */
+    private String webhookUrl;
+
+    /** Server local time of the daily summary; empty for none. */
+    private String dailySummaryAt = "09:00";
+
+    /** How messages name this application; defaults to spring.application.name @ host. */
+    private String instanceName;
+
+    public String getTelegramBotToken() {
+      return telegramBotToken;
+    }
+
+    public void setTelegramBotToken(String telegramBotToken) {
+      this.telegramBotToken = telegramBotToken;
+    }
+
+    public String getTelegramChatId() {
+      return telegramChatId;
+    }
+
+    public void setTelegramChatId(String telegramChatId) {
+      this.telegramChatId = telegramChatId;
+    }
+
+    public String getWebhookUrl() {
+      return webhookUrl;
+    }
+
+    public void setWebhookUrl(String webhookUrl) {
+      this.webhookUrl = webhookUrl;
+    }
+
+    public String getDailySummaryAt() {
+      return dailySummaryAt;
+    }
+
+    public void setDailySummaryAt(String dailySummaryAt) {
+      this.dailySummaryAt = dailySummaryAt;
+    }
+
+    public String getInstanceName() {
+      return instanceName;
+    }
+
+    public void setInstanceName(String instanceName) {
+      this.instanceName = instanceName;
     }
   }
 }

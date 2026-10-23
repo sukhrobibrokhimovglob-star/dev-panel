@@ -1,7 +1,28 @@
 # Dev Panel
 
-A built-in admin panel for Spring Boot backends. Add one dependency and two properties, and your
-application serves a panel at `/dev-panel/` with:
+A built-in admin and early-warning panel for Spring Boot backends. Add one dependency and two
+properties, and your application serves a panel at `/dev-panel/` that tells you what is wrong
+**before** users notice, and sends it to Telegram.
+
+### Monitoring and early warnings (0.2)
+- **Health page**: every area as a traffic light with one plain sentence each ("Requests wait for
+  a database connection: 3 waiting, 10 of 10 busy"), compared with the application's own normal
+- **Alerts** to Telegram and/or a webhook: once when something turns bad, once when it is fine
+  again, plus a daily summary at 09:00
+- **Memory leaks**: the heap left after each garbage collection, its trend and "full in ~N h",
+  GC overhead, threads/classes/open files that keep rising, a heap class histogram
+- **Database (PostgreSQL)**: what runs right now and who blocks whom (with cancel/kill), slowest
+  statements (pg_stat_statements), tables missing an index or bloated, unused indexes,
+  connections vs max_connections, **connection leaks** with the code that took the connection
+- **API**: per endpoint calls, errors, p50/p95/p99, compared with yesterday and with before the
+  deploy; slowest requests; **N+1 query detection** (same SQL many times in one request)
+- **Errors**: exceptions grouped by type and code location, "new since this deploy"
+- **External services** (Feign, RestTemplate): latency, errors, timeouts, "down since"
+- **Background jobs** (`@Scheduled`): last run, duration, failures, missed runs
+- **Server clock** check, **live logs**, **log levels at runtime** (auto-revert),
+  **configuration viewer** (secrets masked), recent deploys
+
+### Tools
 
 - **Server**: CPU (process and system), JVM heap and system memory, disk space, threads
 - **Database pool**: HikariCP active, idle, max, and threads waiting for a connection
@@ -31,7 +52,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.1.3</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
@@ -54,6 +75,22 @@ than committing a password.
 Authenticator codes depend on the time, so the server's clock must be correct. Turn on time sync
 on the server (`sudo timedatectl set-ntp true`). Until that is done,
 `devpanel.two-factor.allowed-clock-drift=10m` tolerates the difference.
+
+### Telegram alerts in 3 minutes
+
+1. In Telegram, open @BotFather, send `/newbot`, copy the token.
+2. Send any message to your new bot (or add it to a group).
+3. Get your chat id from @userinfobot (a group id is negative).
+4. Add to `devpanel.properties`, deploy, then press **Send test message** on the Alerts tab:
+   ```properties
+   devpanel.alerts.telegram-bot-token=123456:ABC...
+   devpanel.alerts.telegram-chat-id=123456789
+   ```
+
+### Slowest queries need pg_stat_statements
+
+Add `shared_preload_libraries = 'pg_stat_statements'` to `postgresql.conf`, restart PostgreSQL and
+run `CREATE EXTENSION pg_stat_statements;` in the application's database (DevOps, once).
 
 ### Lost phone
 
@@ -99,6 +136,7 @@ them.
 | `devpanel.super-admin.username` | `superadmin` | |
 | `devpanel.super-admin.initial-password` | (empty) | Only used while no super admin exists |
 | `devpanel.super-admin.reset-two-factor` | `false` | Super admin lost the phone; remove after use |
+| `devpanel.super-admin.reset` | `false` | Someone took over the super admin: back to the initial password and new 2FA; remove after use |
 | `devpanel.two-factor.allowed-clock-drift` | `30s` | Raise (max `15m`) only while a server clock is being synced |
 | `devpanel.session.timeout` | `8h` | A login ends this long after it started |
 | `devpanel.session.idle-timeout` | `30m` | A login ends after this long without requests |
@@ -115,8 +153,30 @@ them.
 | `devpanel.audit.enabled` | `true` | Record responses with status >= 400 |
 | `devpanel.audit.retention` | `30d` | Older audit rows are deleted daily |
 | `devpanel.trace.enabled` | `true` | Assign trace ids |
+| `devpanel.insights.enabled` | `true` | The whole monitoring part |
+| `devpanel.insights.slow-request` | `1s` | Requests slower than this are listed |
+| `devpanel.insights.n-plus-one-threshold` | `20` | Same SQL this often in one request = N+1 |
+| `devpanel.insights.connection-leak-threshold` | `60s` | Hikari leak detection, if the app has none (0 = off) |
+| `devpanel.insights.jobs` | `true` | Count `@Scheduled` runs (proxies those beans via AspectJ) |
+| `devpanel.insights.clock-reference-url` | `https://www.google.com` | Clock check; empty = off |
+| `devpanel.alerts.telegram-bot-token` | | From @BotFather |
+| `devpanel.alerts.telegram-chat-id` | | Your id (@userinfobot) or a group id |
+| `devpanel.alerts.webhook-url` | | Every alert as JSON |
+| `devpanel.alerts.daily-summary-at` | `09:00` | Server time; empty = no summary |
+| `devpanel.alerts.instance-name` | app @ host | How messages name this application |
 | `devpanel.trace.header` | `X-Trace-Id` | |
 | `devpanel.trace.mdc-key` | `traceId` | |
+
+## What the monitoring adds to your application
+
+- One filter that times requests and counts Hibernate SQL per request (a few microseconds each)
+- One extra Logback appender (in memory; your logging is unchanged)
+- Hikari leak detection, only if you did not configure it
+- With AspectJ on the classpath, `@Scheduled` beans become proxies (turn off with
+  `devpanel.insights.jobs=false`); code reading their fields directly from outside would see the
+  proxy's empty fields
+- Tables `devpanel_exception`, `devpanel_endpoint_hour` (14 days) and `devpanel_deploy`
+- Two daemon threads; nothing calls out except the clock check and your alert channels
 
 ## Security notes
 
@@ -128,6 +188,10 @@ them.
   is accepted. Requests other than `GET` must carry an `X-DevPanel-Request` header, so other
   sites cannot forge them.
 - A password reset, a 2FA reset or disabling an account logs that account out everywhere.
+- During 2FA setup every password login gets a new QR secret, so a QR code someone else saw
+  stops working when the owner logs in. The time and IP of the setup are shown, and each user
+  sees where they are logged in (My security) and can end those sessions.
+- Killing database queries, the heap histogram and the configuration viewer need an admin.
 - Serve the panel over HTTPS.
 - The SQL console runs every query in a read-only transaction with a statement timeout, so
   PostgreSQL itself refuses writes. `UPDATE` is off unless you enable it, and it can never touch

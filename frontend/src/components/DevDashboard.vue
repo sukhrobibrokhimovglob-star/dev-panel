@@ -220,7 +220,18 @@
           <div v-else class="dev-content__body" :key="activeTab">
             <!-- v-if: menyu almashganda bo'lim qayta yaratilib, ma'lumot yangidan olinadi;
                logs/docs bir komponent, shuning uchun key bilan ajratilgan -->
-            <DevMetrics v-if="activeTab === 'metrics'" />
+            <DevHealth v-if="activeTab === 'health'" @open="selectTab" />
+            <DevMetrics v-else-if="activeTab === 'metrics'" />
+            <DevDatabase v-else-if="activeTab === 'database'" />
+            <DevApi v-else-if="activeTab === 'api'" />
+            <DevErrors v-else-if="activeTab === 'errors'" />
+            <DevIntegrations v-else-if="activeTab === 'integrations'" />
+            <DevJobs v-else-if="activeTab === 'jobs'" />
+            <DevAlerts v-else-if="activeTab === 'alerts'" />
+            <DevLiveLogs v-else-if="activeTab === 'liveLogs'" />
+            <DevLogLevels v-else-if="activeTab === 'logLevels'" />
+            <DevConfig v-else-if="activeTab === 'config'" />
+            <DevSecurity v-else-if="activeTab === 'security'" />
             <DevJvm v-else-if="activeTab === 'jvm'" />
             <DevAudit v-else-if="activeTab === 'audit'" />
             <DevQuery v-else-if="activeTab === 'query'" />
@@ -291,19 +302,29 @@ import {
 import { useI18n } from "vue-i18n";
 import { useDark } from "@vueuse/core";
 import {
+  Bell,
   Coin,
+  Connection,
   Cpu,
   Document,
   Expand,
+  FirstAidKit,
   Grid,
+  Lock,
   Monitor,
   Moon,
+  Odometer,
+  Operation,
   Search,
+  Setting,
   Sunny,
   SwitchButton,
   Tickets,
+  Timer,
   User,
+  VideoPlay,
   Warning,
+  WarningFilled,
 } from "@element-plus/icons-vue";
 import { SUPPORT_LOCALES, setI18nLanguage } from "../i18n";
 import { useDevApi } from "../dev.api";
@@ -314,6 +335,17 @@ import DevAudit from "./DevAudit.vue";
 import DevQuery from "./DevQuery.vue";
 import DevFiles from "./DevFiles.vue";
 import DevAccounts from "./DevAccounts.vue";
+import DevHealth from "./DevHealth.vue";
+import DevDatabase from "./DevDatabase.vue";
+import DevApi from "./DevApi.vue";
+import DevErrors from "./DevErrors.vue";
+import DevIntegrations from "./DevIntegrations.vue";
+import DevJobs from "./DevJobs.vue";
+import DevAlerts from "./DevAlerts.vue";
+import DevLiveLogs from "./DevLiveLogs.vue";
+import DevLogLevels from "./DevLogLevels.vue";
+import DevConfig from "./DevConfig.vue";
+import DevSecurity from "./DevSecurity.vue";
 
 interface IMenuItem {
   name: string;
@@ -344,19 +376,32 @@ const groups = computed(() =>
     {
       name: "monitoring",
       items: [
+        { name: "health", icon: FirstAidKit, endpoint: "GET /health" },
         { name: "metrics", icon: Monitor, endpoint: "GET /metrics" },
-        { name: "jvm", icon: Cpu, endpoint: "GET /jvm/threads" },
+        { name: "jvm", icon: Cpu, endpoint: "GET /jvm · /memory" },
+        { name: "database", icon: Coin, endpoint: "GET /database/*" },
+        { name: "api", icon: Odometer, endpoint: "GET /requests/endpoints" },
+        { name: "errors", icon: WarningFilled, endpoint: "GET /exceptions" },
         ...(features.value?.audit === false
           ? []
           : [{ name: "audit", icon: Warning, endpoint: "GET /audit" }]),
+        { name: "integrations", icon: Connection, endpoint: "GET /integrations" },
+        { name: "jobs", icon: Timer, endpoint: "GET /jobs" },
+        { name: "alerts", icon: Bell, endpoint: "GET /alerts" },
       ],
     },
     {
       name: "tools",
-      items:
-        features.value?.query === false
+      items: [
+        ...(features.value?.query === false
           ? []
-          : [{ name: "query", icon: Coin, endpoint: "POST /query" }],
+          : [{ name: "query", icon: Search, endpoint: "POST /query" }]),
+        { name: "liveLogs", icon: VideoPlay, endpoint: "GET /logs/live" },
+        { name: "logLevels", icon: Operation, endpoint: "POST /logging/levels" },
+        ...(store.canManageAccounts
+          ? [{ name: "config", icon: Setting, endpoint: "GET /config" }]
+          : []),
+      ],
     },
     {
       name: "files",
@@ -370,10 +415,12 @@ const groups = computed(() =>
     },
     {
       name: "operations",
-      // USER hisoblar ro'yxatini ko'ra olmaydi — menyuda ham ko'rsatmaymiz
-      items: store.canManageAccounts
-        ? [{ name: "accounts", icon: User, endpoint: "GET /accounts" }]
-        : [],
+      items: [
+        ...(store.canManageAccounts
+          ? [{ name: "accounts", icon: User, endpoint: "GET /accounts" }]
+          : []),
+        { name: "security", icon: Lock, endpoint: "GET /me/sessions" },
+      ],
     },
   ].filter((group) => group.items.length),
 );
@@ -384,9 +431,9 @@ const flatItems = computed<IMenuItem[]>(() =>
 
 const readTab = () => {
   try {
-    return sessionStorage.getItem(TAB_KEY) || "overview";
+    return sessionStorage.getItem(TAB_KEY) || "health";
   } catch {
-    return "overview";
+    return "health";
   }
 };
 
@@ -395,7 +442,7 @@ if (
   activeTab.value !== "overview" &&
   !flatItems.value.some((item) => item.name === activeTab.value)
 )
-  activeTab.value = "overview";
+  activeTab.value = "health";
 
 const menuOpen = ref(false);
 
@@ -473,7 +520,7 @@ onMounted(async () => {
       activeTab.value !== "overview" &&
       !flatItems.value.some((item) => item.name === activeTab.value)
     )
-      activeTab.value = "overview";
+      activeTab.value = "health";
   } catch {
     // overview'da "—" ko'rinadi
   }

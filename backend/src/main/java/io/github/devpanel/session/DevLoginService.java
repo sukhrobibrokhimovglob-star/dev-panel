@@ -6,6 +6,7 @@ import io.github.devpanel.account.DevAccountService;
 import io.github.devpanel.account.DevLoginAttempts;
 import io.github.devpanel.account.Totp;
 import io.github.devpanel.session.DevSessions.Session;
+import io.github.devpanel.support.ClientIp;
 import io.github.devpanel.support.DevPanelException;
 import java.time.Duration;
 import java.util.Locale;
@@ -70,6 +71,9 @@ public class DevLoginService {
     DevSessionStage stage = account.mustChangePassword()
         ? DevSessionStage.PASSWORD_CHANGE
         : nextAfterPassword(account);
+    if (stage == DevSessionStage.TOTP_SETUP) {
+      account = freshSetupSecret(account);
+    }
     sessions.start(account.id(), stage, request, response);
     return state(account, stage);
   }
@@ -83,6 +87,9 @@ public class DevLoginService {
     requireStage(session, DevSessionStage.PASSWORD_CHANGE);
     DevAccount account = accountService.replaceTemporaryPassword(account(session), newPassword);
     DevSessionStage next = nextAfterPassword(account);
+    if (next == DevSessionStage.TOTP_SETUP) {
+      account = freshSetupSecret(account);
+    }
     sessions.advance(session, next, request, response);
     return state(account, next);
   }
@@ -104,7 +111,7 @@ public class DevLoginService {
           : "This code was already used; wait for the next one");
     }
     if (session.stage() == DevSessionStage.TOTP_SETUP) {
-      accounts.confirmTotp(account.id());
+      accounts.confirmTotp(account.id(), ClientIp.of(request));
     }
     loginAttempts.onSuccess(account.username());
     sessions.advance(session, DevSessionStage.ACTIVE, request, response);
@@ -140,6 +147,16 @@ public class DevLoginService {
     }
     return new LoginState(stage, account.username(),
         new TotpSetup(secret, Totp.uri(issuer, account.username(), secret)));
+  }
+
+  /**
+   * A new secret on every password login during setup: a QR code someone else saw (after
+   * learning the password) stops working as soon as the owner logs in again. Reloading the page
+   * keeps the secret, since that does not log in again.
+   */
+  private DevAccount freshSetupSecret(DevAccount account) {
+    accounts.startTotpSetup(account.id(), Totp.newSecret());
+    return accounts.findById(account.id()).orElseThrow();
   }
 
   private static DevSessionStage nextAfterPassword(DevAccount account) {

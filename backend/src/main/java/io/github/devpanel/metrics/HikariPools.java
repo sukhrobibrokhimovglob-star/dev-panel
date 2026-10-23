@@ -39,6 +39,23 @@ public class HikariPools {
     return states;
   }
 
+  /**
+   * Turns on Hikari's leak detection where the application has not configured it. Hikari picks
+   * the value up at runtime (within 30 s) and then logs, for every connection held longer, the
+   * stack trace of the code that took it.
+   */
+  public void enableLeakDetection(long thresholdMs) {
+    if (thresholdMs <= 0) {
+      return;
+    }
+    for (DataSource dataSource : dataSources) {
+      HikariDataSource hikari = unwrap(dataSource);
+      if (hikari != null && hikari.getLeakDetectionThreshold() == 0) {
+        hikari.setLeakDetectionThreshold(thresholdMs);
+      }
+    }
+  }
+
   private static HikariDataSource unwrap(DataSource dataSource) {
     if (dataSource instanceof HikariDataSource hikari) {
       return hikari;

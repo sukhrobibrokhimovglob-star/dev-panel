@@ -15,6 +15,79 @@
       class="mb-4"
     />
 
+    <!-- Xotira oqishi: GC'dan keyin qolgan xotira ("pol") o'sib borayaptimi -->
+    <section
+      v-if="memory"
+      class="mb-4 rounded-xl border p-4"
+      :class="
+        memory.analysis.leakSuspected
+          ? 'border-red-400 bg-red-50 dark:bg-red-950/20'
+          : 'border-gray-200 dark:border-gray-700'
+      "
+    >
+      <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 class="m-0 text-base font-semibold dark:text-white">
+            {{ $t("devPanel.memory.title") }}
+          </h3>
+          <p class="m-0 mt-1 text-sm" :class="memory.analysis.leakSuspected ? 'text-red-600' : 'text-gray-500'">
+            {{ verdict }}
+          </p>
+        </div>
+        <el-button
+          v-if="store.canWrite && store.account?.role !== 'USER'"
+          :loading="histogramLoading"
+          @click="loadHistogram"
+          >{{ $t("devPanel.memory.histogram") }}</el-button
+        >
+      </div>
+      <div class="dev-mini-stats mb-3">
+        <div>
+          <span>{{ $t("devPanel.memory.floor") }}</span
+          ><b>{{ formatBytes(lastFloor) }}</b>
+        </div>
+        <div>
+          <span>{{ $t("devPanel.memory.growth") }}</span
+          ><b>{{ growthText }}</b>
+        </div>
+        <div :class="{ 'is-bad': memory.analysis.gcShare >= 0.1 }">
+          <span>{{ $t("devPanel.memory.gcShare") }}</span
+          ><b>{{ (memory.analysis.gcShare * 100).toFixed(1) }}%</b>
+        </div>
+        <div>
+          <span>{{ $t("devPanel.memory.maxPause") }}</span
+          ><b>{{ memory.analysis.maxPauseMs }} ms</b>
+        </div>
+        <div>
+          <span>{{ $t("devPanel.memory.collections") }}</span
+          ><b>{{ memory.analysis.collectionsLast5Min }}</b>
+        </div>
+      </div>
+      <DevLineChart
+        :title="$t('devPanel.memory.floorChart')"
+        :times="memory.analysis.floor.map((p) => new Date(p.time).toISOString())"
+        :max="memory.analysis.heapMax || undefined"
+        :format="formatBytes"
+        :series="[
+          {
+            name: $t('devPanel.memory.floor'),
+            color: '#d14343',
+            values: memory.analysis.floor.map((p) => p.bytes),
+          },
+        ]"
+      />
+      <el-table v-if="histogram.length" :data="histogram" size="small" class="mt-4" max-height="420">
+        <el-table-column prop="rank" label="#" width="50" />
+        <el-table-column :label="$t('devPanel.memory.class')" min-width="320">
+          <template #default="{ row }"><code class="text-xs">{{ row.className }}</code></template>
+        </el-table-column>
+        <el-table-column prop="instances" :label="$t('devPanel.memory.instances')" width="120" align="right" />
+        <el-table-column :label="$t('devPanel.memory.size')" width="110" align="right">
+          <template #default="{ row }"><b>{{ formatBytes(row.bytes) }}</b></template>
+        </el-table-column>
+      </el-table>
+    </section>
+
     <div v-if="jvm" class="grid gap-4 xl:grid-cols-2">
       <section
         class="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
@@ -154,7 +227,11 @@
 import { computed, onMounted, ref } from "vue";
 import moment from "moment";
 import { useDevApi } from "../dev.api";
-import { IDevJvm } from "../dev.types";
+import { IDevHistogramRow, IDevJvm, IDevMemory } from "../dev.types";
+import { useDevStore } from "../dev.store";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { useI18n } from "vue-i18n";
+import DevLineChart from "./DevLineChart.vue";
 import {
   devErrorMessage,
   formatBytes,
@@ -162,7 +239,53 @@ import {
   usagePercent,
 } from "../dev.utils";
 
-const { GET_JVM, GET_THREAD_DUMP } = useDevApi();
+const { GET_JVM, GET_THREAD_DUMP, GET_MEMORY, GET_HISTOGRAM } = useDevApi();
+const { t } = useI18n();
+const store = useDevStore();
+const memory = ref<IDevMemory | null>(null);
+const histogram = ref<IDevHistogramRow[]>([]);
+const histogramLoading = ref(false);
+
+const lastFloor = computed(() => {
+  const floor = memory.value?.analysis.floor ?? [];
+  return floor.length ? floor[floor.length - 1].bytes : 0;
+});
+
+const growthText = computed(() => {
+  const growth = memory.value?.analysis.floorGrowthPerHour ?? 0;
+  if ((memory.value?.analysis.floor.length ?? 0) < 6) return "—";
+  return `${growth >= 0 ? "+" : "−"}${formatBytes(Math.abs(growth))}/h`;
+});
+
+const verdict = computed(() => {
+  const analysis = memory.value?.analysis;
+  if (!analysis) return "";
+  if (analysis.leakSuspected)
+    return analysis.hoursToFull >= 0
+      ? t("devPanel.memory.leakEta", { hours: Math.round(analysis.hoursToFull) })
+      : t("devPanel.memory.leak");
+  if (analysis.floor.length < 6) return t("devPanel.memory.collecting");
+  return t("devPanel.memory.stable");
+});
+
+// Avval to'liq GC bo'ladi: ilova bir lahza to'xtaydi, shuning uchun so'raymiz
+const loadHistogram = async () => {
+  try {
+    await ElMessageBox.confirm(t("devPanel.memory.histogramConfirm"), t("devPanel.memory.histogram"), {
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  histogramLoading.value = true;
+  try {
+    histogram.value = (await GET_HISTOGRAM()).data;
+  } catch (error) {
+    ElMessage.error(await devErrorMessage(error));
+  } finally {
+    histogramLoading.value = false;
+  }
+};
 
 const jvm = ref<IDevJvm | null>(null);
 const loading = ref(false);
@@ -200,6 +323,11 @@ const load = async () => {
   loading.value = true;
   try {
     jvm.value = (await GET_JVM()).data;
+    try {
+      memory.value = (await GET_MEMORY()).data;
+    } catch {
+      memory.value = null;
+    }
     errorText.value = "";
   } catch (error) {
     errorText.value = await devErrorMessage(error);
@@ -233,6 +361,33 @@ onMounted(load);
 </script>
 
 <style scoped>
+.dev-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.dev-mini-stats > div {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.dev-mini-stats span {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.dev-mini-stats b {
+  font-size: 16px;
+}
+
+.dev-mini-stats > .is-bad b {
+  color: var(--el-color-danger);
+}
+
 .dev-dl {
   display: grid;
   grid-template-columns: max-content 1fr;

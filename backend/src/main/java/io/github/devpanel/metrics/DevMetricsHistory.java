@@ -87,9 +87,13 @@ public class DevMetricsHistory {
             (double) (disk.totalSpace() - disk.usableSpace()) / disk.totalSpace());
       }
     }
+    long openFiles = os instanceof com.sun.management.UnixOperatingSystemMXBean unix
+        ? unix.getOpenFileDescriptorCount() : -1;
     return new Point(Instant.now(), os.getProcessCpuLoad(), os.getCpuLoad(), heap.getUsed(),
         heap.getMax(), ManagementFactory.getThreadMXBean().getThreadCount(), active, idle,
-        pending, max, diskUsed);
+        pending, max, diskUsed,
+        ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage().getUsed(),
+        ManagementFactory.getClassLoadingMXBean().getLoadedClassCount(), openFiles);
   }
 
   /** Averages consecutive points into buckets; peaks of pending connections are kept as max. */
@@ -113,14 +117,33 @@ public class DevMetricsHistory {
           (int) Math.round(group.stream().mapToInt(Point::dbIdle).average().orElse(0)),
           group.stream().mapToInt(Point::dbPending).max().orElse(0),
           group.get(n - 1).dbMax(),
-          group.stream().mapToDouble(Point::diskUsedRatio).max().orElse(0)));
+          group.stream().mapToDouble(Point::diskUsedRatio).max().orElse(0),
+          group.get(n - 1).nonHeapUsed(),
+          group.get(n - 1).loadedClasses(),
+          group.get(n - 1).openFiles()));
     }
     return result;
   }
 
+  /** {@code openFiles} is -1 where the platform does not report it (Windows). */
   public record Point(Instant time, double cpuProcess, double cpuSystem, long heapUsed,
                       long heapMax, int threads, int dbActive, int dbIdle, int dbPending,
-                      int dbMax, double diskUsedRatio) {
+                      int dbMax, double diskUsedRatio, long nonHeapUsed, int loadedClasses,
+                      long openFiles) {
+  }
+
+  /** The raw samples of the last {@code range}, for trend checks. */
+  public List<Point> raw(Duration range) {
+    Instant from = Instant.now().minus(range);
+    List<Point> selected = new ArrayList<>();
+    synchronized (points) {
+      for (Point point : points) {
+        if (!point.time().isBefore(from)) {
+          selected.add(point);
+        }
+      }
+    }
+    return selected;
   }
 
   public record History(long sampleSeconds, List<Point> points) {

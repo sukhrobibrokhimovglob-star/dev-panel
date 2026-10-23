@@ -53,7 +53,12 @@ public class DevPanelInitializer implements SmartInitializingSingleton, Disposab
   public void afterSingletonsInstantiated() {
     schema.create();
     createSuperAdmin();
-    if (properties.getSuperAdmin().isResetTwoFactor() && accountService.resetSuperAdminTwoFactor()) {
+    DevPanelProperties.SuperAdmin superAdmin = properties.getSuperAdmin();
+    if (superAdmin.isReset() && superAdmin.hasInitialPassword()
+        && accountService.resetSuperAdmin(superAdmin.getInitialPassword())) {
+      log.warn("Dev panel super admin was reset to the initial password and must set up 2FA"
+          + " again. Remove devpanel.super-admin.reset now.");
+    } else if (superAdmin.isResetTwoFactor() && accountService.resetSuperAdminTwoFactor()) {
       log.warn("Dev panel super admin two-factor login was reset; it is set up again at the next"
           + " login. Remove devpanel.super-admin.reset-two-factor now.");
     }

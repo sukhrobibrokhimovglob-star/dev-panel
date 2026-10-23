@@ -9,10 +9,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import io.github.devpanel.support.ClientIp;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -49,18 +51,30 @@ public class DevSessions {
     random.nextBytes(bytes);
     String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    String agent = request.getHeader("User-Agent");
     jdbcTemplate.update("INSERT INTO devpanel_session (token_hash, account_id, stage, created_at,"
-        + " last_seen_at) VALUES (?, ?, ?, ?, ?)", hash(token), accountId, stage.name(), now, now);
+            + " last_seen_at, client_ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)", hash(token),
+        accountId, stage.name(), now, now, ClientIp.of(request),
+        agent == null ? null : agent.substring(0, Math.min(300, agent.length())));
     writeCookie(request, response, token, -1);
   }
 
-  /** The session of the request's cookie, when there is one and it has not expired. */
+  /**
+   * The session of the request's cookie, when there is one and it has not expired. A browser may
+   * send several cookies of this name (one left over under an older path, or from another
+   * application on the same host), so each is tried.
+   */
   public Optional<Session> current(HttpServletRequest request) {
-    String token = cookie(request);
-    if (token == null) {
-      return Optional.empty();
+    for (String token : cookies(request)) {
+      Optional<Session> session = find(hash(token));
+      if (session.isPresent()) {
+        return session;
+      }
     }
-    String tokenHash = hash(token);
+    return Optional.empty();
+  }
+
+  private Optional<Session> find(String tokenHash) {
     Optional<Session> found = jdbcTemplate.query("SELECT account_id, stage, created_at,"
             + " last_seen_at FROM devpanel_session WHERE token_hash = ?",
         (rs, rowNum) -> new Session(tokenHash, rs.getLong("account_id"),
@@ -100,9 +114,9 @@ public class DevSessions {
   }
 
   public void end(HttpServletRequest request, HttpServletResponse response) {
-    String token = cookie(request);
-    if (token != null) {
-      delete(hash(token));
+    List<String> tokens = cookies(request);
+    if (!tokens.isEmpty()) {
+      tokens.forEach(token -> delete(hash(token)));
       writeCookie(request, response, "", 0);
     }
   }
@@ -110,6 +124,32 @@ public class DevSessions {
   /** Logs the account out everywhere, e.g. after a password or 2FA reset. */
   public void endAll(long accountId) {
     jdbcTemplate.update("DELETE FROM devpanel_session WHERE account_id = ?", accountId);
+  }
+
+  /** The account's finished logins, newest first; {@code id} is a short prefix of the hash. */
+  public List<SessionView> list(long accountId, String currentHash) {
+    return jdbcTemplate.query("SELECT token_hash, created_at, last_seen_at, client_ip, user_agent"
+            + " FROM devpanel_session WHERE account_id = ? AND stage = ?"
+            + " ORDER BY last_seen_at DESC",
+        (rs, i) -> new SessionView(rs.getString("token_hash").substring(0, 12),
+            rs.getTimestamp("created_at").toLocalDateTime(),
+            rs.getTimestamp("last_seen_at").toLocalDateTime(), rs.getString("client_ip"),
+            rs.getString("user_agent"), rs.getString("token_hash").equals(currentHash)),
+        accountId, DevSessionStage.ACTIVE.name());
+  }
+
+  /** Ends one of the account's own sessions by the id {@link #list} showed. */
+  public boolean endOne(long accountId, String id) {
+    if (id == null || !id.matches("[0-9a-f]{12}")) {
+      return false;
+    }
+    return jdbcTemplate.update("DELETE FROM devpanel_session WHERE account_id = ?"
+        + " AND token_hash LIKE ?", accountId, id + "%") > 0;
+  }
+
+  public int endOthers(long accountId, String currentHash) {
+    return jdbcTemplate.update("DELETE FROM devpanel_session WHERE account_id = ?"
+        + " AND token_hash <> ?", accountId, currentHash);
   }
 
   public int deleteExpired() {
@@ -132,17 +172,16 @@ public class DevSessions {
     jdbcTemplate.update("DELETE FROM devpanel_session WHERE token_hash = ?", tokenHash);
   }
 
-  private static String cookie(HttpServletRequest request) {
+  private static List<String> cookies(HttpServletRequest request) {
     Cookie[] cookies = request.getCookies();
     if (cookies == null) {
-      return null;
+      return List.of();
     }
-    for (Cookie cookie : cookies) {
-      if (COOKIE.equals(cookie.getName()) && !cookie.getValue().isBlank()) {
-        return cookie.getValue();
-      }
-    }
-    return null;
+    return java.util.Arrays.stream(cookies)
+        .filter(cookie -> COOKIE.equals(cookie.getName()) && !cookie.getValue().isBlank())
+        .map(Cookie::getValue)
+        .limit(5)
+        .toList();
   }
 
   /**
@@ -173,6 +212,11 @@ public class DevSessions {
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }
+  }
+
+  /** {@code current}: the session of the browser asking. */
+  public record SessionView(String id, LocalDateTime createdAt, LocalDateTime lastSeenAt,
+                            String clientIp, String userAgent, boolean current) {
   }
 
   public record Session(String tokenHash, long accountId, DevSessionStage stage,

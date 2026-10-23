@@ -4,6 +4,27 @@ import { useDevStore } from "./dev.store";
 import {
   IDevAccount,
   IDevAccountCreateReq,
+  IDevAlerts,
+  IDevConfigProperty,
+  IDevDbActivity,
+  IDevDbOverview,
+  IDevDbStatement,
+  IDevDbTable,
+  IDevDeploy,
+  IDevEndpointRow,
+  IDevExceptionGroup,
+  IDevHealth,
+  IDevHistogramRow,
+  IDevIntegration,
+  IDevJob,
+  IDevLeak,
+  IDevLoggerLevel,
+  IDevMemory,
+  IDevNPlusOne,
+  IDevRate,
+  IDevSession,
+  IDevSlowRequest,
+  IDevUnusedIndex,
   IDevAccountCredentials,
   IDevAccountUpdateReq,
   IDevAuditEntry,
@@ -46,6 +67,14 @@ devInstance.interceptors.response.use(undefined, (error) => {
   }
   return Promise.reject(error);
 });
+
+// EventSource (jonli loglar) uchun to'liq URL: axios'dagi kabi nisbiy yo'l
+export const liveLogsUrl = (level: string, q: string) => {
+  const params = new URLSearchParams();
+  if (level) params.set("level", level);
+  if (q) params.set("q", q);
+  return `${API_BASE_URL}/logs/live?${params}`;
+};
 
 export const useDevApi = () => {
   // Login bosqichlari: parol → (vaqtinchalik parolni almashtirish) → (ilovani ulash) → kod
@@ -131,7 +160,90 @@ export const useDevApi = () => {
   const RESET_TWO_FACTOR = (id: number) =>
     devInstance.post<IDevAccount>(`/accounts/${id}/reset-two-factor`);
 
+  // ---------- 0.2.0: monitoring ----------
+  const GET_HEALTH = () => devInstance.get<IDevHealth>("/health");
+  const GET_RATE = (minutes: number) =>
+    devInstance.get<IDevRate>("/requests/rate", { params: { minutes } });
+  const GET_ALERTS = () => devInstance.get<IDevAlerts>("/alerts");
+  const TEST_ALERT = () => devInstance.post("/alerts/test");
+  const GET_MEMORY = () => devInstance.get<IDevMemory>("/memory");
+  // Avval to'liq GC qiladi — ilova bir lahzaga to'xtaydi
+  const GET_HISTOGRAM = () =>
+    devInstance.post<IDevHistogramRow[]>("/memory/histogram", null, {
+      timeout: 120000,
+    });
+  const GET_ENDPOINTS = (hours: number) =>
+    devInstance.get<IDevEndpointRow[]>("/requests/endpoints", {
+      params: { hours },
+    });
+  const GET_SLOW = () => devInstance.get<IDevSlowRequest[]>("/requests/slow");
+  const GET_N_PLUS_ONE = () =>
+    devInstance.get<IDevNPlusOne[]>("/requests/n-plus-one");
+  const GET_EXCEPTIONS = () =>
+    devInstance.get<IDevExceptionGroup[]>("/exceptions");
+  const GET_DB_OVERVIEW = () =>
+    devInstance.get<IDevDbOverview>("/database/overview");
+  const GET_DB_ACTIVITY = () =>
+    devInstance.get<IDevDbActivity[]>("/database/activity");
+  const GET_DB_STATEMENTS = () =>
+    devInstance.get<IDevDbStatement[]>("/database/statements");
+  const GET_DB_TABLES = () => devInstance.get<IDevDbTable[]>("/database/tables");
+  const GET_DB_UNUSED = () =>
+    devInstance.get<IDevUnusedIndex[]>("/database/unused-indexes");
+  const GET_DB_LEAKS = () => devInstance.get<IDevLeak[]>("/database/leaks");
+  const STOP_DB_QUERY = (pid: number, mode: "cancel" | "terminate") =>
+    devInstance.post(`/database/activity/${pid}/${mode}`);
+  const GET_INTEGRATIONS = () =>
+    devInstance.get<IDevIntegration[]>("/integrations");
+  const GET_JOBS = () => devInstance.get<IDevJob[]>("/jobs");
+  const GET_LOG_LEVELS = (filter?: string) =>
+    devInstance.get<IDevLoggerLevel[]>("/logging/levels", {
+      params: { filter },
+    });
+  const SET_LOG_LEVEL = (logger: string, level: string, minutes: number) =>
+    devInstance.post("/logging/levels", { logger, level, minutes });
+  const RESET_LOG_LEVEL = (logger: string) =>
+    devInstance.delete(`/logging/levels/${encodeURIComponent(logger)}`);
+  const GET_CONFIG = (filter?: string) =>
+    devInstance.get<{ profiles: string[]; properties: IDevConfigProperty[] }>(
+      "/config",
+      { params: { filter } },
+    );
+  const GET_DEPLOYS = () =>
+    devInstance.get<{ current: IDevDeploy; recent: IDevDeploy[] }>("/deploys");
+  const GET_SESSIONS = () => devInstance.get<IDevSession[]>("/me/sessions");
+  const END_SESSION = (id: string) => devInstance.delete(`/me/sessions/${id}`);
+  const END_OTHER_SESSIONS = () =>
+    devInstance.post<{ ended: number }>("/me/sessions/end-others");
+
   return {
+    GET_HEALTH,
+    GET_RATE,
+    GET_ALERTS,
+    TEST_ALERT,
+    GET_MEMORY,
+    GET_HISTOGRAM,
+    GET_ENDPOINTS,
+    GET_SLOW,
+    GET_N_PLUS_ONE,
+    GET_EXCEPTIONS,
+    GET_DB_OVERVIEW,
+    GET_DB_ACTIVITY,
+    GET_DB_STATEMENTS,
+    GET_DB_TABLES,
+    GET_DB_UNUSED,
+    GET_DB_LEAKS,
+    STOP_DB_QUERY,
+    GET_INTEGRATIONS,
+    GET_JOBS,
+    GET_LOG_LEVELS,
+    SET_LOG_LEVEL,
+    RESET_LOG_LEVEL,
+    GET_CONFIG,
+    GET_DEPLOYS,
+    GET_SESSIONS,
+    END_SESSION,
+    END_OTHER_SESSIONS,
     LOGIN,
     GET_LOGIN_STATE,
     LOGIN_NEW_PASSWORD,

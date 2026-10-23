@@ -290,6 +290,22 @@
           ]"
         />
         <DevLineChart
+          :title="$t('devPanel.metrics.resourcesChart')"
+          :times="times"
+          :series="[
+            {
+              name: $t('devPanel.metrics.classes'),
+              color: '#7c5cff',
+              values: points.map((p) => p.loadedClasses),
+            },
+            {
+              name: $t('devPanel.metrics.openFiles'),
+              color: '#e6a23c',
+              values: points.map((p) => (p.openFiles >= 0 ? p.openFiles : null)),
+            },
+          ]"
+        />
+        <DevLineChart
           :title="$t('devPanel.metrics.diskChart')"
           :times="times"
           :max="100"
