@@ -402,7 +402,9 @@
       "timeline": "Vaqt chizig'i",
       "noSpans": "Bu so'rovda SQL va tashqi chaqiruv yo'q",
       "truncated": "Faqat birinchi 400 qadam ko'rsatilgan",
-      "open": "Tahlil"
+      "open": "Tahlil",
+      "at": "da",
+      "copy": "Nusxalash"
     },
     "usage": {
       "active": "Hozir faol",

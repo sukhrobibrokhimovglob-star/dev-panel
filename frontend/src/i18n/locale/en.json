@@ -402,7 +402,9 @@
       "timeline": "Timeline",
       "noSpans": "No SQL or external calls in this request",
       "truncated": "Only the first 400 steps are shown",
-      "open": "Waterfall"
+      "open": "Waterfall",
+      "at": "at",
+      "copy": "Copy"
     },
     "usage": {
       "active": "Active now",
