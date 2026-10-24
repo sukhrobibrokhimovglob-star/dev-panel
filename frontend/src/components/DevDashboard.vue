@@ -225,6 +225,8 @@
             <DevDatabase v-else-if="activeTab === 'database'" />
             <DevApi v-else-if="activeTab === 'api'" />
             <DevErrors v-else-if="activeTab === 'errors'" />
+            <DevUsage v-else-if="activeTab === 'usage'" />
+            <DevThreats v-else-if="activeTab === 'threats'" />
             <DevIntegrations v-else-if="activeTab === 'integrations'" />
             <DevJobs v-else-if="activeTab === 'jobs'" />
             <DevAlerts v-else-if="activeTab === 'alerts'" />
@@ -302,7 +304,9 @@ import {
 import { useI18n } from "vue-i18n";
 import { useDark } from "@vueuse/core";
 import {
+  Aim,
   Bell,
+  DataAnalysis,
   Coin,
   Connection,
   Cpu,
@@ -346,6 +350,8 @@ import DevLiveLogs from "./DevLiveLogs.vue";
 import DevLogLevels from "./DevLogLevels.vue";
 import DevConfig from "./DevConfig.vue";
 import DevSecurity from "./DevSecurity.vue";
+import DevUsage from "./DevUsage.vue";
+import DevThreats from "./DevThreats.vue";
 
 interface IMenuItem {
   name: string;
@@ -385,6 +391,8 @@ const groups = computed(() =>
         ...(features.value?.audit === false
           ? []
           : [{ name: "audit", icon: Warning, endpoint: "GET /audit" }]),
+        { name: "usage", icon: DataAnalysis, endpoint: "GET /usage" },
+        { name: "threats", icon: Aim, endpoint: "GET /security" },
         { name: "integrations", icon: Connection, endpoint: "GET /integrations" },
         { name: "jobs", icon: Timer, endpoint: "GET /jobs" },
         { name: "alerts", icon: Bell, endpoint: "GET /alerts" },

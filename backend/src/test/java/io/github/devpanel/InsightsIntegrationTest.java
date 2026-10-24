@@ -46,6 +46,9 @@ class InsightsIntegrationTest {
   @Autowired
   private HostApplication.Ticker ticker;
 
+  @Autowired
+  private io.github.devpanel.insight.deps.DependencyChecks dependencyChecks;
+
   private PanelClient admin;
 
   @BeforeAll
@@ -58,6 +61,18 @@ class InsightsIntegrationTest {
     }
     rest.getForEntity("/slow", String.class);
     rest.getForEntity("/call-out", String.class);
+    rest.getForEntity("/orgs/42/report", String.class);
+    rest.getForEntity("/orgs/42/report", String.class);
+    // A scanner behind the proxy: many different missing pages, and an attack path
+    org.springframework.http.HttpHeaders scanner = new org.springframework.http.HttpHeaders();
+    scanner.set("X-Forwarded-For", "203.0.113.7");
+    for (int i = 0; i < 31; i++) {
+      rest.exchange("/missing-" + i, org.springframework.http.HttpMethod.GET,
+          new org.springframework.http.HttpEntity<>(scanner), String.class);
+    }
+    rest.exchange("/.env", org.springframework.http.HttpMethod.GET,
+        new org.springframework.http.HttpEntity<>(scanner), String.class);
+    dependencyChecks.checkAll();
     for (int i = 0; i < 50 && ticker.runs() == 0; i++) {
       Thread.sleep(100);
     }
@@ -150,6 +165,80 @@ class InsightsIntegrationTest {
     assertThat(admin.get("/me").getBody().get("totpEnabledAt")).isNotNull();
   }
 
+  @Test
+  void repeatedQueriesAreAnNPlusOneWithTheirFullWaterfall() {
+    List<?> suspects = list("/requests/n-plus-one");
+    assertThat(suspects).anySatisfy(item -> {
+      Map<?, ?> suspect = (Map<?, ?>) item;
+      assertThat(suspect.get("endpoint")).isEqualTo("GET /orgs/{organizationId}/report");
+      // 16 statements of one shape ("select ? as id"): 15 of them are repeats
+      assertThat(((Number) suspect.get("wasted")).intValue()).isEqualTo(15);
+    });
+
+    Map<?, ?> nPlusOne = (Map<?, ?>) suspects.get(0);
+    Map<String, Object> trace = admin.get("/requests/traces/" + nPlusOne.get("traceId")).getBody();
+    assertThat(trace.get("reason")).isEqualTo("N_PLUS_ONE");
+    assertThat(trace.get("tenant")).isEqualTo("42");
+    List<?> spans = (List<?>) trace.get("spans");
+    assertThat(spans).hasSize(16).allSatisfy(span ->
+        assertThat(((Map<?, ?>) span).get("kind")).isEqualTo("SQL"));
+    assertThat(((Number) trace.get("rows")).intValue()).isEqualTo(16);
+    assertThat(((Number) trace.get("responseBytes")).intValue()).isPositive();
+  }
+
+  @Test
+  void endpointsSplitTheirTimeAndCountRowsAndBytes() {
+    assertThat(endpoints()).anySatisfy(row -> {
+      Map<?, ?> stats = (Map<?, ?>) row.get("stats");
+      assertThat(stats.get("endpoint")).isEqualTo("GET /orgs/{organizationId}/report");
+      assertThat(((Number) stats.get("avgRows")).intValue()).isEqualTo(16);
+      assertThat(((Number) stats.get("avgBytes")).intValue()).isPositive();
+      assertThat(((Number) stats.get("sqlPerCall")).doubleValue()).isEqualTo(16.0);
+    });
+  }
+
+  @Test
+  void usageIsCountedPerOrganizationAndUnusedEndpointsAreListed() {
+    Map<String, Object> usage = admin.get("/usage").getBody();
+    assertThat((List<?>) usage.get("tenants")).anySatisfy(item -> {
+      Map<?, ?> tenant = (Map<?, ?>) item;
+      assertThat(tenant.get("key")).isEqualTo("42");
+      assertThat(((Number) tenant.get("total")).intValue()).isEqualTo(2);
+    });
+    Map<String, Object> unused = admin.get("/usage/unused").getBody();
+    assertThat(unused.toString()).contains("GET /never-called").doesNotContain("GET /boom");
+  }
+
+  @Test
+  void scanningFromOneAddressIsDetected() {
+    Map<String, Object> security = admin.get("/security").getBody();
+    assertThat(security.toString()).contains("203.0.113.7");
+    assertThat((List<?>) security.get("findings")).anySatisfy(item -> {
+      Map<?, ?> finding = (Map<?, ?>) item;
+      assertThat(finding.get("ip")).isEqualTo("203.0.113.7");
+      assertThat(finding.get("type")).isIn("SCAN", "PROBE");
+    });
+    // Refused with a token is a failed login; anonymous refusals are not
+    assertThat((List<?>) security.get("findings")).noneSatisfy(item -> {
+      Map<?, ?> finding = (Map<?, ?>) item;
+      assertThat(finding.get("ip")).isEqualTo("203.0.113.7");
+      assertThat(finding.get("type")).isEqualTo("BRUTE_FORCE");
+    });
+  }
+
+  @Test
+  void capacityDependenciesAndDeployReport() {
+    Map<String, Object> tomcat = admin.get("/server/tomcat").getBody();
+    assertThat(tomcat).containsKey("state");
+    assertThat(list("/dependencies")).anySatisfy(item -> {
+      Map<?, ?> target = (Map<?, ?>) item;
+      assertThat(target.get("name")).isEqualTo("Database");
+      assertThat(target.get("up")).isEqualTo(true);
+    });
+    assertThat(admin.get("/deploys/report").getBody()).containsKeys("faster", "slower",
+        "newErrors");
+  }
+
   private List<Map<String, Object>> endpoints() {
     ResponseEntity<List<Map<String, Object>>> response = rest.exchange(
         PanelClient.API + "/requests/endpoints", org.springframework.http.HttpMethod.GET,
@@ -190,9 +279,11 @@ class InsightsIntegrationTest {
     static class Endpoints {
 
       private final RestTemplate restTemplate;
+      private final javax.sql.DataSource dataSource;
 
-      Endpoints(RestTemplate restTemplate) {
+      Endpoints(RestTemplate restTemplate, javax.sql.DataSource dataSource) {
         this.restTemplate = restTemplate;
+        this.dataSource = dataSource;
       }
 
       @GetMapping("/boom")
@@ -209,6 +300,23 @@ class InsightsIntegrationTest {
       String slow() throws InterruptedException {
         Thread.sleep(150);
         return "slow";
+      }
+
+      // The classic N+1: one list query, then one query per row
+      @GetMapping("/orgs/{organizationId}/report")
+      String report(@PathVariable long organizationId) {
+        org.springframework.jdbc.core.JdbcTemplate jdbc =
+            new org.springframework.jdbc.core.JdbcTemplate(dataSource);
+        jdbc.queryForList("select 1 as id");
+        for (int i = 1; i <= 15; i++) {
+          jdbc.queryForObject("select " + i + " as id", Integer.class);
+        }
+        return "report of " + organizationId;
+      }
+
+      @GetMapping("/never-called")
+      String neverCalled() {
+        return "nobody calls me";
       }
 
       @GetMapping("/call-out")

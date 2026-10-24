@@ -1,6 +1,7 @@
 package io.github.devpanel.insight;
 
 import io.github.devpanel.insight.alerts.AlertEngine;
+import io.github.devpanel.insight.deps.DependencyChecks;
 import io.github.devpanel.insight.health.ClockCheck;
 import io.github.devpanel.insight.logs.ExceptionGroups;
 import io.github.devpanel.insight.logs.LogbackCapture;
@@ -38,6 +39,7 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
   private final ObjectProvider<MemoryWatch> memory;
   private final ObjectProvider<HikariPools> hikari;
   private final ObjectProvider<LogLevels> logLevels;
+  private final ObjectProvider<DependencyChecks> dependencies;
   private final long leakThresholdMs;
   private volatile boolean started;
 
@@ -46,7 +48,7 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
       EndpointHistory endpointHistory, AlertEngine alerts, ClockCheck clock, DeployInfo deploys,
       ObjectProvider<LogbackCapture> logback, ObjectProvider<MemoryWatch> memory,
       ObjectProvider<HikariPools> hikari, ObjectProvider<LogLevels> logLevels,
-      long leakThresholdMs) {
+      ObjectProvider<DependencyChecks> dependencies, long leakThresholdMs) {
     this.scheduler = scheduler;
     this.exceptions = exceptions;
     this.endpointHistory = endpointHistory;
@@ -57,6 +59,7 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
     this.memory = memory;
     this.hikari = hikari;
     this.logLevels = logLevels;
+    this.dependencies = dependencies;
     this.leakThresholdMs = leakThresholdMs;
   }
 
@@ -86,6 +89,10 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
     LogLevels levels = logLevels.getIfAvailable();
     if (levels != null) {
       every(30, levels::revertExpired);
+    }
+    DependencyChecks checks = dependencies.getIfAvailable();
+    if (checks != null) {
+      every(60, checks::checkAll);
     }
   }
 

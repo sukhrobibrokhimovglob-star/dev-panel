@@ -1,5 +1,6 @@
 package io.github.devpanel.insight.outbound;
 
+import io.github.devpanel.insight.trace.RequestRecorder;
 import java.io.IOException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -39,17 +40,29 @@ public class RestTemplateOutbound implements BeanPostProcessor {
     public ClientHttpResponse intercept(HttpRequest request, byte[] body,
         ClientHttpRequestExecution execution) throws IOException {
       long start = System.currentTimeMillis();
+      long startNanos = System.nanoTime();
       OutboundStats target = stats.getIfAvailable();
+      RequestRecorder recorder = RequestRecorder.current();
+      String method = String.valueOf(request.getMethod());
+      String url = request.getURI().toString();
       try {
         ClientHttpResponse response = execution.execute(request, body);
+        int status = response.getRawStatusCode();
         if (target != null) {
-          target.success(request.getURI().toString(), response.getRawStatusCode(),
-              System.currentTimeMillis() - start);
+          target.success(url, status, System.currentTimeMillis() - start);
+        }
+        if (recorder != null) {
+          recorder.external(method, url, status, startNanos, System.nanoTime() - startNanos,
+              status >= 500 ? "HTTP " + status : null);
         }
         return response;
       } catch (IOException | RuntimeException e) {
         if (target != null) {
-          target.failure(request.getURI().toString(), e, System.currentTimeMillis() - start);
+          target.failure(url, e, System.currentTimeMillis() - start);
+        }
+        if (recorder != null) {
+          recorder.external(method, url, 0, startNanos, System.nanoTime() - startNanos,
+              e.getClass().getSimpleName() + ": " + e.getMessage());
         }
         throw e;
       }

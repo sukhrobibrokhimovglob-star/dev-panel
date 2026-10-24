@@ -37,7 +37,9 @@
       "liveLogs": "Live logs",
       "logLevels": "Log levels",
       "config": "Configuration",
-      "security": "My security"
+      "security": "My security",
+      "usage": "Usage",
+      "threats": "Security"
     },
     "metrics": {
       "autoRefresh": "Refreshes every {seconds} s",
@@ -73,7 +75,11 @@
       "noData": "No data yet",
       "resourcesChart": "Loaded classes and open files",
       "classes": "Classes",
-      "openFiles": "Open files"
+      "openFiles": "Open files",
+      "capacity": "Request capacity (Tomcat)",
+      "requestThreads": "Busy request threads",
+      "queued": "Waiting requests",
+      "connections": "Connections"
     },
     "audit": {
       "method": "Method",
@@ -230,7 +236,8 @@
         "errors": "Errors",
         "external": "External services",
         "jobs": "Background jobs",
-        "clock": "Clock"
+        "clock": "Clock",
+        "security": "Security"
       }
     },
     "api": {
@@ -246,7 +253,11 @@
       "duration": "Duration",
       "repeats": "Repeats",
       "statement": "Repeated statement",
-      "nPlusOneHint": "One request ran the same SQL many times — usually a lazy-loaded relation in a loop. Use a JOIN FETCH or an entity graph."
+      "nPlusOneHint": "One request ran the same SQL again and again — usually related data loaded row by row. Wasted = repeats beyond the first, over all repeated statements.",
+      "timeSplit": "Time: DB / HTTP / code",
+      "wasted": "Wasted / total SQL",
+      "traces": "Recent waterfalls",
+      "tracesHint": "Kept: slow, failed and N+1 requests, plus one recent request per endpoint per minute. Click a row."
     },
     "errors": {
       "onlyNew": "Only new since deploy",
@@ -379,6 +390,61 @@
       "leakEta": "Possible memory leak: at this pace the heap is full in about {hours} h",
       "collecting": "Collecting data — needs about an hour of garbage collections",
       "stable": "Stable — no sign of a leak"
+    },
+    "waterfall": {
+      "title": "Request waterfall: where the time went",
+      "total": "total",
+      "code": "Code",
+      "rows": "Rows",
+      "size": "Response",
+      "repeated": "{wasted} repeated queries (N+1) — the same statement run many times:",
+      "step": "Step (click for full text)",
+      "timeline": "Timeline",
+      "noSpans": "No SQL or external calls in this request",
+      "truncated": "Only the first 400 steps are shown",
+      "open": "Waterfall"
+    },
+    "usage": {
+      "active": "Active now",
+      "activeHint": "Users with a request in the last 5 minutes",
+      "user": "User",
+      "users": "Users",
+      "org": "Organization",
+      "orgs": "Organizations",
+      "tenants": "Organizations",
+      "lastSeen": "Last seen",
+      "lastAction": "Last action",
+      "lastHour": "Last hour",
+      "topEndpoints": "Most used endpoints",
+      "unused": "Never called",
+      "unusedHint": "{count} of {total} endpoints had no call since {since}: candidates for dead code (check scheduled or rare yearly use first).",
+      "handler": "Code"
+    },
+    "threats": {
+      "note": "Detects attacks that reach the application (floods from a few addresses, password guessing, scanning). A large network DDoS never reaches it and must be blocked in nginx, the firewall or by the provider; use the addresses below for that.",
+      "findings": "What looks like an attack now",
+      "none": "Nothing suspicious right now",
+      "topIps": "Busiest addresses",
+      "requests": "Requests",
+      "perMinute": "Last minute",
+      "probes": "Attack paths",
+      "lastPath": "Last path",
+      "events": "Recent refused and suspicious requests",
+      "path": "Path"
+    },
+    "deps": {
+      "title": "Availability checks (every minute)",
+      "hint": "Pinged even without traffic, so you know a service is down before users hit it.",
+      "lastHour": "Last 60 checks",
+      "uptime": "Uptime"
+    },
+    "deployReport": {
+      "title": "This deploy vs the week before ({minutes} min running)",
+      "errors": "Server error rate: {before} before → {now} now",
+      "unchanged": "{count} endpoints unchanged",
+      "faster": "Faster",
+      "slower": "Slower",
+      "newErrors": "New errors"
     }
   },
   "actions": {

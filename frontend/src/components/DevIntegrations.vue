@@ -14,6 +14,33 @@
       :closable="false"
       class="mb-4"
     />
+    <section v-if="dependencies.length" class="mb-5">
+      <h3 class="m-0 mb-1 text-base font-semibold dark:text-white">{{ $t("devPanel.deps.title") }}</h3>
+      <p class="m-0 mb-3 text-sm text-gray-500">{{ $t("devPanel.deps.hint") }}</p>
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          v-for="dep in dependencies"
+          :key="dep.name"
+          class="rounded-xl border p-3"
+          :class="dep.up ? 'border-gray-200 dark:border-gray-700' : 'border-red-400'"
+        >
+          <div class="mb-1 flex items-center gap-2">
+            <el-tag :type="dep.up ? 'success' : 'danger'" effect="dark" size="small">{{ dep.up ? "UP" : "DOWN" }}</el-tag>
+            <b class="truncate text-sm">{{ dep.name }}</b>
+            <span class="ml-auto text-xs text-gray-500">{{ dep.lastMs }} ms</span>
+          </div>
+          <div class="deps-bars" :title="$t('devPanel.deps.lastHour')">
+            <i v-for="(ok, i) in dep.history" :key="i" :class="ok ? 'ok' : 'bad'" />
+          </div>
+          <div class="mt-1 text-xs text-gray-500">
+            {{ $t("devPanel.deps.uptime") }}: {{ (dep.uptime * 100).toFixed(1) }}%
+            <template v-if="!dep.up"> · {{ $t("devPanel.integrations.downSince") }} {{ formatTime(dep.downSince) }}</template>
+          </div>
+          <div v-if="dep.lastError" class="mt-1 break-all text-xs text-red-500">{{ dep.lastError }}</div>
+        </div>
+      </div>
+    </section>
+
     <el-empty
       v-if="!loading && !targets.length"
       :description="$t('devPanel.integrations.none')"
@@ -69,18 +96,21 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useDevApi } from "../dev.api";
-import { IDevIntegration } from "../dev.types";
+import { IDevDependency, IDevIntegration } from "../dev.types";
 import { devErrorMessage, formatMs, formatTime, fromNow, useAutoRefresh } from "../dev.utils";
 
-const { GET_INTEGRATIONS } = useDevApi();
+const { GET_INTEGRATIONS, GET_DEPENDENCIES } = useDevApi();
 const targets = ref<IDevIntegration[]>([]);
+const dependencies = ref<IDevDependency[]>([]);
 const loading = ref(false);
 const errorText = ref("");
 
 const load = async () => {
   loading.value = true;
   try {
-    targets.value = (await GET_INTEGRATIONS()).data;
+    const [t, d] = await Promise.all([GET_INTEGRATIONS(), GET_DEPENDENCIES()]);
+    targets.value = t.data;
+    dependencies.value = d.data;
     errorText.value = "";
   } catch (error) {
     errorText.value = await devErrorMessage(error);
@@ -96,3 +126,24 @@ onMounted(() => {
 });
 onBeforeUnmount(refresh.stop);
 </script>
+
+<style scoped>
+.deps-bars {
+  display: flex;
+  gap: 1px;
+  height: 14px;
+}
+
+.deps-bars i {
+  flex: 1;
+  border-radius: 1px;
+}
+
+.deps-bars .ok {
+  background: #3ec972;
+}
+
+.deps-bars .bad {
+  background: #d14343;
+}
+</style>

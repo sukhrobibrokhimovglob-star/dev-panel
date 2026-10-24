@@ -4,6 +4,13 @@ import io.github.devpanel.account.DevAccount;
 import io.github.devpanel.account.DevRole;
 import io.github.devpanel.insight.alerts.AlertEngine;
 import io.github.devpanel.insight.database.DatabaseInsights;
+import io.github.devpanel.insight.deploy.DeployReport;
+import io.github.devpanel.insight.deps.DependencyChecks;
+import io.github.devpanel.insight.security.SecurityStats;
+import io.github.devpanel.insight.server.TomcatCapacity;
+import io.github.devpanel.insight.trace.TraceStore;
+import io.github.devpanel.insight.usage.EndpointCatalog;
+import io.github.devpanel.insight.usage.UsageStats;
 import io.github.devpanel.insight.health.ClockCheck;
 import io.github.devpanel.insight.health.HealthService;
 import io.github.devpanel.insight.jobs.JobStats;
@@ -65,6 +72,13 @@ public class InsightController {
   private final ObjectProvider<OutboundStats> outbound;
   private final ObjectProvider<JobStats> jobs;
   private final ObjectProvider<LogLevels> logLevels;
+  private final TraceStore traces;
+  private final UsageStats usage;
+  private final EndpointCatalog catalog;
+  private final SecurityStats security;
+  private final DeployReport deployReport;
+  private final ObjectProvider<TomcatCapacity> tomcat;
+  private final ObjectProvider<DependencyChecks> dependencies;
   private final HeapHistogram histogram = new HeapHistogram();
 
   @SuppressWarnings("checkstyle:ParameterNumber")
@@ -73,7 +87,10 @@ public class InsightController {
       DatabaseInsights database, DeployInfo deploys, ConfigViewer config,
       ObjectProvider<MemoryWatch> memory, ObjectProvider<LogEvents> logs,
       ObjectProvider<LiveLogs> liveLogs, ObjectProvider<OutboundStats> outbound,
-      ObjectProvider<JobStats> jobs, ObjectProvider<LogLevels> logLevels) {
+      ObjectProvider<JobStats> jobs, ObjectProvider<LogLevels> logLevels, TraceStore traces,
+      UsageStats usage, EndpointCatalog catalog, SecurityStats security,
+      DeployReport deployReport, ObjectProvider<TomcatCapacity> tomcat,
+      ObjectProvider<DependencyChecks> dependencies) {
     this.health = health;
     this.alerts = alerts;
     this.clock = clock;
@@ -89,6 +106,72 @@ public class InsightController {
     this.outbound = outbound;
     this.jobs = jobs;
     this.logLevels = logLevels;
+    this.traces = traces;
+    this.usage = usage;
+    this.catalog = catalog;
+    this.security = security;
+    this.deployReport = deployReport;
+    this.tomcat = tomcat;
+    this.dependencies = dependencies;
+  }
+
+  // ---------- 0.3: waterfall, usage, security, capacity, dependencies, deploy report ----------
+
+  @GetMapping("/requests/traces")
+  public List<TraceStore.TraceSummary> traces() {
+    return traces.list();
+  }
+
+  @GetMapping("/requests/traces/{id}")
+  public TraceStore.Trace trace(@PathVariable String id) {
+    return traces.find(id).orElseThrow(() -> DevPanelException.notFound(
+        "This request is no longer kept (only the last few hundred are)"));
+  }
+
+  @GetMapping("/usage")
+  public Map<String, Object> usage() {
+    long now = System.currentTimeMillis();
+    return Map.of("users", usage.users(now), "tenants", usage.tenants(now),
+        "activeUsers", usage.activeUsers(now, 5));
+  }
+
+  /** Declared endpoints with no call in the kept history (14 days) nor since this start. */
+  @GetMapping("/usage/unused")
+  public Map<String, Object> unused() {
+    java.util.Set<String> called = endpointHistory.calledEndpoints();
+    requests.endpoints(System.currentTimeMillis(), 48)
+        .forEach(view -> called.add(view.endpoint()));
+    List<EndpointCatalog.Entry> all = catalog.all();
+    List<EndpointCatalog.Entry> unused = all.stream()
+        .filter(entry -> !called.contains(entry.endpoint())).toList();
+    Instant since = endpointHistory.historyStart();
+    return Map.of("total", all.size(), "unused", unused,
+        "since", since == null ? exceptions.started() : since);
+  }
+
+  @GetMapping("/security")
+  public Map<String, Object> security() {
+    long now = System.currentTimeMillis();
+    return Map.of("top10min", security.top(now, 10, 50), "top1h", security.top(now, 60, 50),
+        "events", security.events(), "findings", security.findings(now));
+  }
+
+  @GetMapping("/server/tomcat")
+  public Map<String, Object> tomcat() {
+    TomcatCapacity capacity = tomcat.getIfAvailable();
+    TomcatCapacity.State state = capacity == null ? null : capacity.state();
+    return state == null ? Map.of() : Map.of("state", state);
+  }
+
+  @GetMapping("/dependencies")
+  public List<DependencyChecks.TargetView> dependencies() {
+    DependencyChecks checks = dependencies.getIfAvailable();
+    return checks == null ? List.of() : checks.list();
+  }
+
+  @GetMapping("/deploys/report")
+  public DeployReport.Report deployReport() {
+    return deployReport.build();
   }
 
   // ---------- health and alerts ----------

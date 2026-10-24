@@ -24,6 +24,13 @@
 - Live logs, runtime log levels, configuration viewer, deploy history
 - Security: fresh 2FA secret per setup login, sessions list, setup time/IP, full super admin reset
 
+## Done in 0.3.0
+- Request waterfall, DB/external/code time split, rows and response size per endpoint
+- N+1 by total wasted queries over all repeated statements
+- Usage per user and organization, active users, never-called endpoints
+- Security: floods, password/token guessing, scans, attack-path probes per IP
+- Availability checks, Tomcat capacity, deploy report
+
 ## Next
 1. Publish `0.1.0` on JitPack and switch gp to it
 2. Liquibase/Flyway status in the config view

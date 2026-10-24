@@ -4,6 +4,14 @@ import { useDevStore } from "./dev.store";
 import {
   IDevAccount,
   IDevAccountCreateReq,
+  IDevDependency,
+  IDevDeployReport,
+  IDevSecurity,
+  IDevTomcat,
+  IDevTrace,
+  IDevTraceSummary,
+  IDevUnused,
+  IDevUsage,
   IDevAlerts,
   IDevConfigProperty,
   IDevDbActivity,
@@ -216,7 +224,34 @@ export const useDevApi = () => {
   const END_OTHER_SESSIONS = () =>
     devInstance.post<{ ended: number }>("/me/sessions/end-others");
 
+  // ---------- 0.3.0 ----------
+  const GET_TRACES = () => devInstance.get<IDevTraceSummary[]>("/requests/traces");
+  const GET_TRACE = (id: string) =>
+    devInstance.get<IDevTrace>(`/requests/traces/${encodeURIComponent(id)}`);
+  const GET_USAGE = () =>
+    devInstance.get<{
+      users: IDevUsage[];
+      tenants: IDevUsage[];
+      activeUsers: IDevUsage[];
+    }>("/usage");
+  const GET_UNUSED = () => devInstance.get<IDevUnused>("/usage/unused");
+  const GET_SECURITY = () => devInstance.get<IDevSecurity>("/security");
+  const GET_TOMCAT = () =>
+    devInstance.get<{ state?: IDevTomcat }>("/server/tomcat");
+  const GET_DEPENDENCIES = () =>
+    devInstance.get<IDevDependency[]>("/dependencies");
+  const GET_DEPLOY_REPORT = () =>
+    devInstance.get<IDevDeployReport>("/deploys/report");
+
   return {
+    GET_TRACES,
+    GET_TRACE,
+    GET_USAGE,
+    GET_UNUSED,
+    GET_SECURITY,
+    GET_TOMCAT,
+    GET_DEPENDENCIES,
+    GET_DEPLOY_REPORT,
     GET_HEALTH,
     GET_RATE,
     GET_ALERTS,

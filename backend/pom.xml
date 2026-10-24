@@ -6,7 +6,7 @@
 
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.2.1</version>
+  <version>0.3.0</version>
   <packaging>jar</packaging>
 
   <name>Dev Panel Spring Boot Starter</name>
@@ -104,12 +104,6 @@
     <dependency>
       <groupId>org.aspectj</groupId>
       <artifactId>aspectjweaver</artifactId>
-      <scope>provided</scope>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.hibernate</groupId>
-      <artifactId>hibernate-core</artifactId>
       <scope>provided</scope>
       <optional>true</optional>
     </dependency>

@@ -59,6 +59,43 @@
         </button>
       </div>
 
+      <!-- Shu deploy nimani o'zgartirdi -->
+      <section
+        v-if="report && !report.noHistory && report.minutesRunning >= 30"
+        class="mt-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700"
+      >
+        <h3 class="m-0 mb-1 text-base font-semibold dark:text-white">
+          {{ $t("devPanel.deployReport.title", { minutes: report.minutesRunning }) }}
+        </h3>
+        <p class="m-0 mb-3 text-sm text-gray-500">
+          {{ $t("devPanel.deployReport.errors", {
+            before: errorRate(report.errorsBefore, report.callsBefore),
+            now: errorRate(report.errorsNow, report.callsNow),
+          }) }}
+          · {{ $t("devPanel.deployReport.unchanged", { count: report.unchanged }) }}
+        </p>
+        <div class="grid gap-4 md:grid-cols-3">
+          <div>
+            <b class="text-sm text-green-600">✅ {{ $t("devPanel.deployReport.faster") }} ({{ report.faster.length }})</b>
+            <div v-for="c in report.faster.slice(0, 6)" :key="c.endpoint" class="text-xs">
+              <code>{{ c.endpoint }}</code> {{ formatMs(c.p95BeforeMs) }} → <b>{{ formatMs(c.p95NowMs) }}</b>
+            </div>
+          </div>
+          <div>
+            <b class="text-sm text-orange-500">⚠️ {{ $t("devPanel.deployReport.slower") }} ({{ report.slower.length }})</b>
+            <div v-for="c in report.slower.slice(0, 6)" :key="c.endpoint" class="text-xs">
+              <code>{{ c.endpoint }}</code> {{ formatMs(c.p95BeforeMs) }} → <b>{{ formatMs(c.p95NowMs) }}</b>
+            </div>
+          </div>
+          <div>
+            <b class="text-sm text-red-500">🆕 {{ $t("devPanel.deployReport.newErrors") }} ({{ report.newErrors.length }})</b>
+            <div v-for="e in report.newErrors.slice(0, 6)" :key="e.fingerprint" class="text-xs">
+              <b>{{ e.type.substring(e.type.lastIndexOf(".") + 1) }}</b> ×{{ e.count }}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Hamma tekshiruvlar, soha bo'yicha -->
       <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <section
@@ -149,7 +186,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import moment from "moment";
 import { ArrowRight } from "@element-plus/icons-vue";
 import { useDevApi } from "../dev.api";
-import { IDevCheck, IDevHealth, IDevRate, TDevCheckStatus } from "../dev.types";
+import {
+  IDevCheck,
+  IDevDeployReport,
+  IDevHealth,
+  IDevRate,
+  TDevCheckStatus,
+} from "../dev.types";
 import {
   STATUS_COLORS,
   devErrorMessage,
@@ -171,6 +214,7 @@ const AREA_ORDER = [
   "api",
   "errors",
   "external",
+  "security",
   "jobs",
   "clock",
 ];
@@ -181,7 +225,10 @@ const RANK: Record<TDevCheckStatus, number> = {
   CRITICAL: 3,
 };
 
-const { GET_HEALTH, GET_RATE } = useDevApi();
+const { GET_HEALTH, GET_RATE, GET_DEPLOY_REPORT } = useDevApi();
+const report = ref<IDevDeployReport | null>(null);
+const errorRate = (errors: number, calls: number) =>
+  calls ? `${((errors / calls) * 100).toFixed(2)}%` : "—";
 const health = ref<IDevHealth | null>(null);
 const rate = ref<IDevRate | null>(null);
 const loading = ref(false);
@@ -247,6 +294,11 @@ const load = async () => {
     loadedAt.value = Date.now();
     health.value = h.data;
     rate.value = r.data;
+    try {
+      report.value = (await GET_DEPLOY_REPORT()).data;
+    } catch {
+      report.value = null;
+    }
     errorText.value = "";
   } catch (error) {
     errorText.value = await devErrorMessage(error);

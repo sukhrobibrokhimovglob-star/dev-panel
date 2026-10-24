@@ -170,6 +170,33 @@
       </div>
 
       <div
+        v-if="tomcat"
+        class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
+      >
+        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
+          {{ $t("devPanel.metrics.capacity") }}
+        </h3>
+        <div class="mb-1 flex justify-between text-sm dark:text-gray-300">
+          <span>{{ $t("devPanel.metrics.requestThreads") }}</span>
+          <span>{{ tomcat.busyThreads }} / {{ tomcat.maxThreads }}</span>
+        </div>
+        <el-progress
+          :percentage="usagePercent(tomcat.busyThreads, tomcat.maxThreads)"
+          :color="colorFor"
+          class="mb-3"
+        />
+        <div class="dev-stats">
+          <div :class="{ 'is-danger': tomcat.queued > 0 }">
+            <span>{{ $t("devPanel.metrics.queued") }}</span><b>{{ tomcat.queued }}</b>
+          </div>
+          <div>
+            <span>{{ $t("devPanel.metrics.connections") }}</span
+            ><b>{{ tomcat.connections }} / {{ tomcat.maxConnections }}</b>
+          </div>
+        </div>
+      </div>
+
+      <div
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
         <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
@@ -326,7 +353,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useDevApi } from "../dev.api";
-import { IDevMetrics, IDevMetricsHistory } from "../dev.types";
+import { IDevMetrics, IDevMetricsHistory, IDevTomcat } from "../dev.types";
 import DevLineChart from "./DevLineChart.vue";
 import {
   devErrorMessage,
@@ -344,7 +371,8 @@ const RANGES = [
   { minutes: 1440, label: "24h" },
 ];
 
-const { GET_METRICS, GET_METRICS_HISTORY } = useDevApi();
+const { GET_METRICS, GET_METRICS_HISTORY, GET_TOMCAT } = useDevApi();
+const tomcat = ref<IDevTomcat | null>(null);
 
 const metrics = ref<IDevMetrics | null>(null);
 const history = ref<IDevMetricsHistory | null>(null);
@@ -378,6 +406,11 @@ const load = async () => {
     ]);
     metrics.value = current.data;
     history.value = past.data;
+    try {
+      tomcat.value = (await GET_TOMCAT()).data.state ?? null;
+    } catch {
+      tomcat.value = null;
+    }
     errorText.value = "";
   } catch (error) {
     errorText.value = await devErrorMessage(error);

@@ -1,6 +1,10 @@
 package io.github.devpanel;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -391,8 +395,107 @@ public class DevPanelProperties {
     /** Requests slower than this are listed one by one. */
     private Duration slowRequest = Duration.ofSeconds(1);
 
-    /** The same SQL statement this often in one request is reported as N+1. */
-    private int nPlusOneThreshold = 20;
+    /**
+     * Repeated SQL in one request that counts as N+1: the repeats beyond the first, over every
+     * statement run 3+ times (e.g. 15 address loads + 10 caregiver loads = 23 wasted).
+     */
+    private int nPlusOneThreshold = 10;
+
+    /**
+     * Times each SQL statement and counts rows by wrapping the DataSource bean (for the request
+     * waterfall and the DB/code time split). Turn off if code injects the concrete pool class.
+     */
+    private boolean sqlTracing = true;
+
+    /** Path variables that name the organization/tenant, for usage per organization. */
+    private List<String> tenantPathVariables =
+        new ArrayList<>(List.of("organizationId", "orgId", "organization_id",
+            "tenantId"));
+
+    /**
+     * Take the client address from X-Forwarded-For / X-Real-IP (behind nginx). Only safe when a
+     * proxy sets the header; directly exposed, a client could fake it.
+     */
+    private boolean trustForwardedFor = true;
+
+    /** Pings the database and external services once a minute, even without traffic. */
+    private boolean dependencyChecks = true;
+
+    /** Extra URLs to ping, name → URL, e.g. devpanel.insights.dependencies.MIS=https://... */
+    private Map<String, String> dependencies = new LinkedHashMap<>();
+
+    /** Requests per minute from one address that count as a flood. */
+    private int floodPerMinute = 300;
+
+    /** 401/403 answers to one address in 10 minutes that count as password guessing. */
+    private int failedLoginsPer10Min = 20;
+
+    /** Different missing pages (404) asked by one address in 10 minutes that count as a scan. */
+    private int scanPathsPer10Min = 30;
+
+    public boolean isSqlTracing() {
+      return sqlTracing;
+    }
+
+    public void setSqlTracing(boolean sqlTracing) {
+      this.sqlTracing = sqlTracing;
+    }
+
+    public List<String> getTenantPathVariables() {
+      return tenantPathVariables;
+    }
+
+    public void setTenantPathVariables(List<String> tenantPathVariables) {
+      this.tenantPathVariables = tenantPathVariables;
+    }
+
+    public boolean isTrustForwardedFor() {
+      return trustForwardedFor;
+    }
+
+    public void setTrustForwardedFor(boolean trustForwardedFor) {
+      this.trustForwardedFor = trustForwardedFor;
+    }
+
+    public boolean isDependencyChecks() {
+      return dependencyChecks;
+    }
+
+    public void setDependencyChecks(boolean dependencyChecks) {
+      this.dependencyChecks = dependencyChecks;
+    }
+
+    public Map<String, String> getDependencies() {
+      return dependencies;
+    }
+
+    public void setDependencies(Map<String, String> dependencies) {
+      this.dependencies = dependencies;
+    }
+
+    public int getFloodPerMinute() {
+      return floodPerMinute;
+    }
+
+    public void setFloodPerMinute(int floodPerMinute) {
+      this.floodPerMinute = floodPerMinute;
+    }
+
+    public int getFailedLoginsPer10Min() {
+      return failedLoginsPer10Min;
+    }
+
+    public void setFailedLoginsPer10Min(int failedLoginsPer10Min) {
+      this.failedLoginsPer10Min = failedLoginsPer10Min;
+    }
+
+    public int getScanPathsPer10Min() {
+      return scanPathsPer10Min;
+    }
+
+    public void setScanPathsPer10Min(int scanPathsPer10Min) {
+      this.scanPathsPer10Min = scanPathsPer10Min;
+    }
 
     /**
      * Hikari reports a connection held longer than this, with the code that took it. Only set

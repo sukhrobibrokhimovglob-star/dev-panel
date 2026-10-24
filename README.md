@@ -19,6 +19,15 @@ properties, and your application serves a panel at `/dev-panel/` that tells you 
 - **Errors**: exceptions grouped by type and code location, "new since this deploy"
 - **External services** (Feign, RestTemplate): latency, errors, timeouts, "down since"
 - **Background jobs** (`@Scheduled`): last run, duration, failures, missed runs
+- **Request waterfall** (0.3): every SQL statement and external call of a slow, failed or N+1
+  request with its duration and rows, so you see where the time went
+- **Time split per endpoint**: DB / external calls / own code, rows read, response size
+- **Usage**: active users, requests per user and per organization, endpoints never called
+- **Security**: floods from one address, password/token guessing, scanning and attack-path
+  probes, per client IP (detection only; real DDoS must be stopped in nginx/firewall)
+- **Availability checks** every minute (database and external services, even without traffic),
+  **Tomcat capacity** (busy request threads, queue), a **deploy report** (faster/slower
+  endpoints and new errors since this start)
 - **Server clock** check, **live logs**, **log levels at runtime** (auto-revert),
   **configuration viewer** (secrets masked), recent deploys
 
@@ -52,7 +61,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.2.1</version>
+  <version>0.3.0</version>
 </dependency>
 ```
 
@@ -155,7 +164,15 @@ them.
 | `devpanel.trace.enabled` | `true` | Assign trace ids |
 | `devpanel.insights.enabled` | `true` | The whole monitoring part |
 | `devpanel.insights.slow-request` | `1s` | Requests slower than this are listed |
-| `devpanel.insights.n-plus-one-threshold` | `20` | Same SQL this often in one request = N+1 |
+| `devpanel.insights.n-plus-one-threshold` | `10` | Wasted (repeated) SQL in one request = N+1 |
+| `devpanel.insights.sql-tracing` | `true` | Time each SQL statement (wraps the DataSource bean) |
+| `devpanel.insights.tenant-path-variables` | `organizationId, orgId, organization_id, tenantId` | Path variables naming the organization |
+| `devpanel.insights.trust-forwarded-for` | `true` | Client IP from X-Forwarded-For (only behind a proxy) |
+| `devpanel.insights.dependency-checks` | `true` | Ping DB and external services every minute |
+| `devpanel.insights.dependencies.<name>` | | Extra URL to ping, e.g. `.MIS=https://...` |
+| `devpanel.insights.flood-per-minute` | `300` | Requests per minute from one IP = flood |
+| `devpanel.insights.failed-logins-per10-min` | `20` | Refusals with credentials per IP = guessing |
+| `devpanel.insights.scan-paths-per10-min` | `30` | Different refused/missing pages per IP = scan |
 | `devpanel.insights.connection-leak-threshold` | `60s` | Hikari leak detection, if the app has none (0 = off) |
 | `devpanel.insights.jobs` | `true` | Count `@Scheduled` runs (proxies those beans via AspectJ) |
 | `devpanel.insights.clock-reference-url` | `https://www.google.com` | Clock check; empty = off |
@@ -169,7 +186,10 @@ them.
 
 ## What the monitoring adds to your application
 
-- One filter that times requests and counts Hibernate SQL per request (a few microseconds each)
+- One filter that times requests, counts response bytes and records their SQL and external calls
+- The DataSource bean is wrapped to time statements and count rows (pass-through; `unwrap` still
+  reaches the pool). Code that injects the concrete pool class (e.g. `HikariDataSource`) by type
+  would no longer find it: set `devpanel.insights.sql-tracing=false` then
 - One extra Logback appender (in memory; your logging is unchanged)
 - Hikari leak detection, only if you did not configure it
 - With AspectJ on the classpath, `@Scheduled` beans become proxies (turn off with

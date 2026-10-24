@@ -2,6 +2,9 @@ package io.github.devpanel.insight.health;
 
 import io.github.devpanel.insight.Trend;
 import io.github.devpanel.insight.database.DatabaseInsights;
+import io.github.devpanel.insight.deps.DependencyChecks;
+import io.github.devpanel.insight.security.SecurityStats;
+import io.github.devpanel.insight.server.TomcatCapacity;
 import io.github.devpanel.insight.health.Check.Status;
 import io.github.devpanel.insight.jobs.JobStats;
 import io.github.devpanel.insight.logs.ExceptionGroups;
@@ -52,13 +55,17 @@ public class HealthService {
   private final OutboundStats outbound;
   private final JobStats jobs;
   private final ClockCheck clock;
+  private final TomcatCapacity tomcat;
+  private final SecurityStats security;
+  private final DependencyChecks dependencies;
   private final Instant started = Instant.now();
 
   /** Any of the optional insights may be null when the application lacks the library. */
   public HealthService(DevMetricsService metrics, DevMetricsHistory history, MemoryWatch memory,
       LogEvents logs, ExceptionGroups exceptions, RequestStats requests,
       EndpointHistory endpointHistory, DatabaseInsights database, OutboundStats outbound,
-      JobStats jobs, ClockCheck clock) {
+      JobStats jobs, ClockCheck clock, TomcatCapacity tomcat, SecurityStats security,
+      DependencyChecks dependencies) {
     this.metrics = metrics;
     this.history = history;
     this.memory = memory;
@@ -70,11 +77,17 @@ public class HealthService {
     this.outbound = outbound;
     this.jobs = jobs;
     this.clock = clock;
+    this.tomcat = tomcat;
+    this.security = security;
+    this.dependencies = dependencies;
   }
 
   public Report report() {
     List<Check> checks = new ArrayList<>();
     run(checks, "server", this::cpu);
+    run(checks, "server", this::tomcat);
+    run(checks, "security", this::security);
+    run(checks, "external", this::dependencies);
     run(checks, "memory", this::memory);
     run(checks, "threads", this::threads);
     run(checks, "disk", this::disk);
@@ -121,6 +134,66 @@ public class HealthService {
           "metrics"));
     }
     return List.of(new Check("cpu", "server", Status.OK, "CPU is fine", numbers, "metrics"));
+  }
+
+  private List<Check> tomcat(long now) {
+    TomcatCapacity.State state = tomcat == null ? null : tomcat.state();
+    if (state == null || state.maxThreads() <= 0 || state.busyThreads() < 0) {
+      return List.of();
+    }
+    double share = (double) state.busyThreads() / state.maxThreads();
+    String numbers = state.busyThreads() + " of " + state.maxThreads() + " request threads busy"
+        + (state.queued() > 0 ? ", " + state.queued() + " requests waiting" : "");
+    if (share >= 0.95 || state.queued() > 0) {
+      return List.of(new Check("server.tomcat", "server", Status.CRITICAL,
+          "Server at its request limit", numbers + ". New requests wait; usually slow queries or"
+              + " slow external calls hold the threads.", "metrics"));
+    }
+    if (share >= 0.8) {
+      return List.of(new Check("server.tomcat", "server", Status.WARNING,
+          "Server close to its request limit", numbers, "metrics"));
+    }
+    return List.of(new Check("server.tomcat", "server", Status.OK, "Request capacity is fine",
+        numbers, "metrics"));
+  }
+
+  private List<Check> security(long now) {
+    if (security == null) {
+      return List.of();
+    }
+    List<Check> checks = new ArrayList<>();
+    for (SecurityStats.Finding finding : security.findings(now)) {
+      String title = switch (finding.type()) {
+        case "FLOOD" -> "Request flood from one address";
+        case "BRUTE_FORCE" -> "Many failed logins from one address";
+        case "SCAN" -> "Someone is scanning for pages";
+        default -> "Attack paths probed";
+      };
+      checks.add(new Check("security." + finding.type() + "." + finding.ip(), "security",
+          finding.critical() ? Status.CRITICAL : Status.WARNING, title, finding.detail(),
+          "threats"));
+    }
+    if (checks.isEmpty()) {
+      checks.add(new Check("security", "security", Status.OK, "No attack patterns seen",
+          "No floods, password guessing or scanning in the last minutes", "threats"));
+    }
+    return checks;
+  }
+
+  private List<Check> dependencies(long now) {
+    if (dependencies == null) {
+      return List.of();
+    }
+    List<Check> checks = new ArrayList<>();
+    for (DependencyChecks.TargetView target : dependencies.list()) {
+      if (!target.up()) {
+        checks.add(new Check("dependency." + target.name(), "external", Status.CRITICAL,
+            target.name() + " does not answer",
+            "Down since " + TIME.format(target.downSince()) + ": " + target.lastError(),
+            "integrations"));
+      }
+    }
+    return checks;
   }
 
   private List<Check> memory(long now) {
@@ -358,11 +431,11 @@ public class HealthService {
     Instant hourAgo = Instant.ofEpochMilli(now).minus(Duration.ofHours(1));
     return requests.nPlusOneSuspects().stream()
         .filter(suspect -> suspect.time().isAfter(hourAgo))
-        .max((a, b) -> Integer.compare(a.repeats(), b.repeats()))
+        .max((a, b) -> Integer.compare(a.wasted(), b.wasted()))
         .map(worst -> List.of(new Check("api.n-plus-one", "api", Status.WARNING,
             "Repeated queries in one request (N+1)",
-            worst.endpoint() + " ran the same query " + worst.repeats() + " times in one request ("
-                + worst.sqlTotal() + " queries in total)", "api")))
+            worst.endpoint() + " ran " + worst.sqlTotal() + " queries in one request, "
+                + worst.wasted() + " of them repeats of the same statements", "api")))
         .orElse(List.of());
   }
 

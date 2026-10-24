@@ -37,7 +37,9 @@
       "liveLogs": "Jonli loglar",
       "logLevels": "Log darajalari",
       "config": "Konfiguratsiya",
-      "security": "Mening xavfsizligim"
+      "security": "Mening xavfsizligim",
+      "usage": "Foydalanish",
+      "threats": "Xavfsizlik"
     },
     "metrics": {
       "autoRefresh": "Har {seconds} soniyada yangilanadi",
@@ -73,7 +75,11 @@
       "noData": "Hali ma'lumot yo'q",
       "resourcesChart": "Yuklangan klasslar va ochiq fayllar",
       "classes": "Klasslar",
-      "openFiles": "Ochiq fayllar"
+      "openFiles": "Ochiq fayllar",
+      "capacity": "So'rov sig'imi (Tomcat)",
+      "requestThreads": "Band so'rov oqimlari",
+      "queued": "Kutayotgan so'rovlar",
+      "connections": "Ulanishlar"
     },
     "audit": {
       "method": "Metod",
@@ -230,7 +236,8 @@
         "errors": "Xatolar",
         "external": "Tashqi servislar",
         "jobs": "Fon vazifalari",
-        "clock": "Vaqt"
+        "clock": "Vaqt",
+        "security": "Xavfsizlik"
       }
     },
     "api": {
@@ -246,7 +253,11 @@
       "duration": "Davomiyligi",
       "repeats": "Takror",
       "statement": "Takrorlangan so'rov",
-      "nPlusOneHint": "Bitta so'rov bir xil SQLni ko'p marta bajargan — odatda tsikl ichidagi lazy bog'lanish. JOIN FETCH yoki entity graph ishlating."
+      "nPlusOneHint": "Bitta so'rov bir xil SQLni qayta-qayta bajargan — odatda bog'liq ma'lumot qatorma-qator yuklanadi. Ortiqcha — birinchisidan keyingi takrorlar.",
+      "timeSplit": "Vaqt: BD / HTTP / kod",
+      "wasted": "Ortiqcha / jami SQL",
+      "traces": "Oxirgi tahlillar",
+      "tracesHint": "Saqlanadi: sekin, xatoli va N+1 so'rovlar, hamda har endpoint uchun daqiqasiga bittadan. Qatorni bosing."
     },
     "errors": {
       "onlyNew": "Faqat deploydan keyingi yangilari",
@@ -379,6 +390,61 @@
       "leakEta": "Ehtimoliy oqish: shu tezlikda xotira taxminan {hours} soatda to'ladi",
       "collecting": "Ma'lumot yig'ilmoqda — taxminan bir soatlik GC kerak",
       "stable": "Barqaror — oqish belgisi yo'q"
+    },
+    "waterfall": {
+      "title": "So'rov tahlili: vaqt qayerga ketdi",
+      "total": "jami",
+      "code": "Kod",
+      "rows": "Qatorlar",
+      "size": "Javob",
+      "repeated": "{wasted} ta takroriy so'rov (N+1) — bir xil so'rov ko'p marta:",
+      "step": "Qadam (to'liq matn uchun bosing)",
+      "timeline": "Vaqt chizig'i",
+      "noSpans": "Bu so'rovda SQL va tashqi chaqiruv yo'q",
+      "truncated": "Faqat birinchi 400 qadam ko'rsatilgan",
+      "open": "Tahlil"
+    },
+    "usage": {
+      "active": "Hozir faol",
+      "activeHint": "Oxirgi 5 daqiqada so'rov yuborganlar",
+      "user": "Foydalanuvchi",
+      "users": "Foydalanuvchilar",
+      "org": "Tashkilot",
+      "orgs": "Tashkilotlar",
+      "tenants": "Tashkilotlar",
+      "lastSeen": "Oxirgi marta",
+      "lastAction": "Oxirgi harakat",
+      "lastHour": "Oxirgi soat",
+      "topEndpoints": "Eng ko'p ishlatilgan endpointlar",
+      "unused": "Chaqirilmagan",
+      "unusedHint": "{total} ta endpointdan {count} tasi {since} dan beri chaqirilmagan: o'chirish nomzodlari (avval kam/yillik ishlatilishini tekshiring).",
+      "handler": "Kod"
+    },
+    "threats": {
+      "note": "Ilovaga yetib keladigan hujumlarni aniqlaydi (bir necha manzildan flood, parol tanlash, skanerlash). Katta tarmoq DDoS ilovaga yetmaydi — uni nginx, firewall yoki provayder bloklaydi; quyidagi manzillardan foydalaning.",
+      "findings": "Hozir hujumga o'xshash narsalar",
+      "none": "Hozir shubhali narsa yo'q",
+      "topIps": "Eng faol manzillar",
+      "requests": "So'rovlar",
+      "perMinute": "Oxirgi daqiqa",
+      "probes": "Hujum yo'llari",
+      "lastPath": "Oxirgi yo'l",
+      "events": "Oxirgi rad etilgan va shubhali so'rovlar",
+      "path": "Yo'l"
+    },
+    "deps": {
+      "title": "Mavjudlik tekshiruvi (har daqiqa)",
+      "hint": "Trafik bo'lmasa ham tekshiriladi — foydalanuvchilardan oldin bilasiz.",
+      "lastHour": "Oxirgi 60 tekshiruv",
+      "uptime": "Ishlash"
+    },
+    "deployReport": {
+      "title": "Bu deploy va oldingi hafta ({minutes} daqiqa ishlayapti)",
+      "errors": "Server xatolari ulushi: {before} oldin → {now} hozir",
+      "unchanged": "{count} ta endpoint o'zgarmagan",
+      "faster": "Tezroq",
+      "slower": "Sekinroq",
+      "newErrors": "Yangi xatolar"
     }
   },
   "actions": {

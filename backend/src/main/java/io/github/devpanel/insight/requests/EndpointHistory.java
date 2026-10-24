@@ -68,6 +68,44 @@ public class EndpointHistory {
     return result;
   }
 
+  /**
+   * Per endpoint over the week before {@code deployedAt}: calls, call-weighted p95, server
+   * errors and SQL per call.
+   */
+  public Map<String, Before> beforeDeploy(Instant deployedAt) {
+    Map<String, Before> result = new HashMap<>();
+    jdbcTemplate.query("SELECT endpoint, SUM(calls) AS calls, SUM(p95_ms * calls) AS weighted,"
+            + " SUM(server_errors) AS errors, SUM(sql_per_call * calls) AS sql"
+            + " FROM devpanel_endpoint_hour WHERE hour_start >= ? AND hour_start < ?"
+            + " GROUP BY endpoint",
+        rs -> {
+          long calls = rs.getLong("calls");
+          if (calls > 0) {
+            result.put(rs.getString("endpoint"), new Before(calls, rs.getLong("weighted") / calls,
+                rs.getLong("errors"), rs.getDouble("sql") / calls));
+          }
+        },
+        Timestamp.from(deployedAt.minus(BEFORE_DEPLOY)),
+        new Timestamp(deployedAt.toEpochMilli() / 3_600_000 * 3_600_000));
+    return result;
+  }
+
+  public record Before(long calls, long p95Ms, long serverErrors, double sqlPerCall) {
+  }
+
+  /** Endpoints called at least once in the kept history (14 days). */
+  public java.util.Set<String> calledEndpoints() {
+    return new java.util.HashSet<>(jdbcTemplate.queryForList(
+        "SELECT DISTINCT endpoint FROM devpanel_endpoint_hour", String.class));
+  }
+
+  /** When the kept history starts; null when there is none yet. */
+  public Instant historyStart() {
+    Timestamp first = jdbcTemplate.queryForObject(
+        "SELECT MIN(hour_start) FROM devpanel_endpoint_hour", Timestamp.class);
+    return first == null ? null : first.toInstant();
+  }
+
   /** p95 and calls per endpoint in the same hour one day ago, all instances together. */
   public Map<String, long[]> sameHourYesterday() {
     long hourStart = (System.currentTimeMillis() / 3_600_000 - 24) * 3_600_000;

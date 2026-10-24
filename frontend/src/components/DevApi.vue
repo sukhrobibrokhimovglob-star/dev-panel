@@ -156,6 +156,19 @@
               </div>
             </template>
           </el-table-column>
+          <el-table-column :label="$t('devPanel.api.timeSplit')" min-width="150">
+            <template #default="{ row }">
+              <div class="split" :title="splitTitle(row.stats)">
+                <i class="db" :style="{ flex: row.stats.avgDbMs }" />
+                <i class="ext" :style="{ flex: row.stats.avgExternalMs }" />
+                <i class="code" :style="{ flex: row.stats.avgCodeMs }" />
+              </div>
+              <div class="mt-0.5 text-[11px] text-gray-500">
+                DB {{ formatMs(row.stats.avgDbMs) }} · HTTP
+                {{ formatMs(row.stats.avgExternalMs) }}
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column
             prop="stats.sqlPerCall"
             :label="$t('devPanel.api.sqlPerCall')"
@@ -164,12 +177,39 @@
             sortable
           >
             <template #default="{ row }">
-              <span :class="{ 'font-bold text-orange-500': row.stats.sqlMax >= 20 }"
+              <span :class="{ 'font-bold text-orange-500': row.stats.wastedPerCall >= 10 }"
                 >{{ row.stats.sqlPerCall.toFixed(1) }}
                 <small class="text-gray-400"
                   >/ {{ row.stats.sqlMax }}</small
                 ></span
               >
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="stats.avgRows"
+            :label="$t('devPanel.waterfall.rows')"
+            width="90"
+            align="right"
+            sortable
+          >
+            <template #default="{ row }">
+              <span :class="{ 'font-bold text-orange-500': row.stats.maxRows >= 1000 }"
+                >{{ row.stats.avgRows }}
+                <small class="text-gray-400">/ {{ row.stats.maxRows }}</small></span
+              >
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="stats.avgBytes"
+            :label="$t('devPanel.waterfall.size')"
+            width="100"
+            align="right"
+            sortable
+          >
+            <template #default="{ row }">
+              <span :class="{ 'font-bold text-orange-500': row.stats.maxBytes >= 1048576 }">{{
+                formatBytes(row.stats.avgBytes)
+              }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -194,9 +234,19 @@
               ><b>{{ formatMs(row.ms) }}</b></template
             >
           </el-table-column>
+          <el-table-column label="DB" width="90" align="right">
+            <template #default="{ row }">{{ formatMs(row.dbMs) }}</template>
+          </el-table-column>
+          <el-table-column label="HTTP" width="90" align="right">
+            <template #default="{ row }">{{ formatMs(row.externalMs) }}</template>
+          </el-table-column>
           <el-table-column prop="sql" label="SQL" width="70" align="right" />
-          <el-table-column width="90" align="center">
+          <el-table-column :label="$t('devPanel.waterfall.rows')" prop="rows" width="80" align="right" />
+          <el-table-column width="170" align="center">
             <template #default="{ row }">
+              <el-button link type="primary" @click="openTrace(row.traceId)">{{
+                $t("devPanel.waterfall.open")
+              }}</el-button>
               <el-button
                 v-if="row.traceId"
                 link
@@ -222,37 +272,63 @@
               ><code class="text-xs">{{ row.endpoint }}</code></template
             >
           </el-table-column>
-          <el-table-column
-            :label="$t('devPanel.api.repeats')"
-            width="110"
-            align="right"
-          >
+          <el-table-column :label="$t('devPanel.api.wasted')" width="120" align="right">
             <template #default="{ row }"
-              ><b class="text-orange-500">{{ row.repeats }}×</b> /
+              ><b class="text-orange-500">{{ row.wasted }}</b> /
               {{ row.sqlTotal }}</template
             >
           </el-table-column>
-          <el-table-column :label="$t('devPanel.api.statement')" min-width="320">
-            <template #default="{ row }"
-              ><code class="block whitespace-pre-wrap break-all text-xs">{{
-                row.statement
-              }}</code></template
-            >
-          </el-table-column>
-          <el-table-column width="90" align="center">
+          <el-table-column :label="$t('devPanel.api.statement')" min-width="360">
             <template #default="{ row }">
-              <el-button
-                v-if="row.traceId"
-                link
-                type="primary"
-                @click="openLogs(row.traceId, row.time)"
-                >{{ $t("devPanel.audit.logs") }}</el-button
-              >
+              <div v-for="(item, i) in row.repeated" :key="i" class="mb-1 text-xs">
+                <b>{{ item.count }}×</b>
+                <code class="break-all">{{ item.statement.slice(0, 180) }}</code>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column width="110" align="center">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openTrace(row.traceId)">{{
+                $t("devPanel.waterfall.open")
+              }}</el-button>
             </template>
           </el-table-column>
         </el-table>
       </el-tab-pane>
+
+      <el-tab-pane
+        :label="`${$t('devPanel.api.traces')} (${traces.length})`"
+        name="traces"
+      >
+        <p class="m-0 mb-3 text-sm text-gray-500">{{ $t("devPanel.api.tracesHint") }}</p>
+        <el-table :data="traces" size="small" border @row-click="(row) => openTrace(row.id)">
+          <el-table-column :label="$t('devPanel.api.time')" width="140">
+            <template #default="{ row }">{{ formatTime(row.time) }}</template>
+          </el-table-column>
+          <el-table-column width="120">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.reason === 'ERROR' ? 'danger' : row.reason === 'SAMPLE' ? 'info' : 'warning'">{{ row.reason }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="Endpoint" min-width="240">
+            <template #default="{ row }"><code class="text-xs">{{ row.endpoint }}</code></template>
+          </el-table-column>
+          <el-table-column prop="status" label="HTTP" width="70" />
+          <el-table-column :label="$t('devPanel.api.duration')" width="100" align="right">
+            <template #default="{ row }"><b>{{ formatMs(row.totalMs) }}</b></template>
+          </el-table-column>
+          <el-table-column label="DB" width="90" align="right">
+            <template #default="{ row }">{{ formatMs(row.sqlMs) }}</template>
+          </el-table-column>
+          <el-table-column label="HTTP" width="90" align="right">
+            <template #default="{ row }">{{ formatMs(row.externalMs) }}</template>
+          </el-table-column>
+          <el-table-column prop="sqlCount" label="SQL" width="70" align="right" />
+        </el-table>
+      </el-tab-pane>
     </el-tabs>
+
+    <DevWaterfall v-model="traceVisible" :trace-id="traceId" />
 
     <DevTraceLogs
       v-if="logsOf"
@@ -266,16 +342,34 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useDevApi } from "../dev.api";
-import { IDevEndpointRow, IDevNPlusOne, IDevSlowRequest } from "../dev.types";
+import {
+  IDevEndpointRow,
+  IDevNPlusOne,
+  IDevSlowRequest,
+  IDevTraceSummary,
+} from "../dev.types";
 import {
   devErrorMessage,
+  formatBytes,
   formatMs,
   formatTime,
   useAutoRefresh,
 } from "../dev.utils";
 import DevTraceLogs from "./DevTraceLogs.vue";
+import DevWaterfall from "./DevWaterfall.vue";
 
-const { GET_ENDPOINTS, GET_SLOW, GET_N_PLUS_ONE } = useDevApi();
+const { GET_ENDPOINTS, GET_SLOW, GET_N_PLUS_ONE, GET_TRACES } = useDevApi();
+const traces = ref<IDevTraceSummary[]>([]);
+const traceId = ref<string | null>(null);
+const traceVisible = ref(false);
+
+const openTrace = (id: string) => {
+  traceId.value = id;
+  traceVisible.value = true;
+};
+
+const splitTitle = (stats: IDevEndpointRow["stats"]) =>
+  `DB ${formatMs(stats.avgDbMs)} · HTTP ${formatMs(stats.avgExternalMs)} · code ${formatMs(stats.avgCodeMs)}`;
 
 const tab = ref("endpoints");
 const hours = ref(24);
@@ -310,14 +404,16 @@ const openLogs = (traceId: string, time: string) => {
 const load = async () => {
   loading.value = true;
   try {
-    const [e, s, n] = await Promise.all([
+    const [e, s, n, t] = await Promise.all([
       GET_ENDPOINTS(hours.value),
       GET_SLOW(),
       GET_N_PLUS_ONE(),
+      GET_TRACES(),
     ]);
     endpoints.value = e.data;
     slow.value = s.data;
     nPlusOne.value = n.data;
+    traces.value = t.data;
     errorText.value = "";
   } catch (error) {
     errorText.value = await devErrorMessage(error);
@@ -333,3 +429,25 @@ onMounted(() => {
 });
 onBeforeUnmount(refresh.stop);
 </script>
+
+<style scoped>
+.split {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--el-fill-color);
+}
+
+.split .db {
+  background: #106297;
+}
+
+.split .ext {
+  background: #e6a23c;
+}
+
+.split .code {
+  background: #7c5cff;
+}
+</style>

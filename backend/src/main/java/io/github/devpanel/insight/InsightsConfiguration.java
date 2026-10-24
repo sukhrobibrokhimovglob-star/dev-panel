@@ -4,6 +4,15 @@ import io.github.devpanel.DevPanelProperties;
 import io.github.devpanel.insight.alerts.AlertEngine;
 import io.github.devpanel.insight.alerts.Notifier;
 import io.github.devpanel.insight.database.DatabaseInsights;
+import io.github.devpanel.insight.deploy.DeployReport;
+import io.github.devpanel.insight.deps.DependencyChecks;
+import io.github.devpanel.insight.security.SecurityStats;
+import io.github.devpanel.insight.server.TomcatCapacity;
+import io.github.devpanel.insight.trace.JdbcTracing;
+import io.github.devpanel.insight.trace.TraceStore;
+import io.github.devpanel.insight.usage.EndpointCatalog;
+import io.github.devpanel.insight.usage.UsageInterceptor;
+import io.github.devpanel.insight.usage.UsageStats;
 import io.github.devpanel.insight.health.ClockCheck;
 import io.github.devpanel.insight.health.HealthService;
 import io.github.devpanel.insight.jobs.JobRunAspect;
@@ -21,7 +30,6 @@ import io.github.devpanel.insight.outbound.OutboundStats;
 import io.github.devpanel.insight.outbound.RestTemplateOutbound;
 import io.github.devpanel.insight.requests.EndpointHistory;
 import io.github.devpanel.insight.requests.ExceptionCaptureResolver;
-import io.github.devpanel.insight.requests.HibernateSqlCounting;
 import io.github.devpanel.insight.requests.RequestInsightFilter;
 import io.github.devpanel.insight.requests.RequestStats;
 import io.github.devpanel.insight.ops.DeployInfo.Current;
@@ -36,6 +44,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.logging.LoggingSystem;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -43,6 +53,8 @@ import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.config.ScheduledTaskHolder;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * The monitoring part of the panel ({@code devpanel.insights.enabled}, on by default). Every
@@ -53,8 +65,9 @@ import org.springframework.scheduling.config.ScheduledTaskHolder;
 @ConditionalOnProperty(prefix = "devpanel.insights", name = "enabled", havingValue = "true",
     matchIfMissing = true)
 @Import({InsightController.class, InsightsConfiguration.LogbackInsights.class,
-    InsightsConfiguration.MemoryInsights.class, InsightsConfiguration.HibernateInsights.class,
-    InsightsConfiguration.FeignInsights.class, InsightsConfiguration.JobInsights.class})
+    InsightsConfiguration.MemoryInsights.class, InsightsConfiguration.FeignInsights.class,
+    InsightsConfiguration.JobInsights.class, InsightsConfiguration.TomcatInsights.class,
+    InsightsConfiguration.TracingInsights.class, InsightsConfiguration.DependencyInsights.class})
 public class InsightsConfiguration {
 
   /** After the trace and audit filters, so the trace id is known. */
@@ -90,12 +103,57 @@ public class InsightsConfiguration {
   }
 
   @Bean
+  TraceStore devPanelTraceStore() {
+    return new TraceStore();
+  }
+
+  @Bean
+  UsageStats devPanelUsageStats() {
+    return new UsageStats();
+  }
+
+  @Bean
+  SecurityStats devPanelSecurityStats(DevPanelProperties properties) {
+    DevPanelProperties.Insights insights = properties.getInsights();
+    return new SecurityStats(insights.getFloodPerMinute(), insights.getFailedLoginsPer10Min(),
+        insights.getScanPathsPer10Min());
+  }
+
+  @Bean
+  EndpointCatalog devPanelEndpointCatalog(ApplicationContext context,
+      DevPanelProperties properties) {
+    return new EndpointCatalog(context, properties.getBasePath());
+  }
+
+  @Bean
+  DeployReport devPanelDeployReport(RequestStats devPanelRequestStats,
+      EndpointHistory devPanelEndpointHistory, ExceptionGroups devPanelExceptionGroups) {
+    return new DeployReport(devPanelRequestStats, devPanelEndpointHistory,
+        devPanelExceptionGroups);
+  }
+
+  /** Lets the recorder know the user and organization of each request (inside Spring MVC). */
+  @Bean
+  WebMvcConfigurer devPanelUsageInterceptor(DevPanelProperties properties) {
+    UsageInterceptor interceptor =
+        new UsageInterceptor(properties.getInsights().getTenantPathVariables());
+    return new WebMvcConfigurer() {
+      @Override
+      public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(interceptor);
+      }
+    };
+  }
+
+  @Bean
   FilterRegistrationBean<RequestInsightFilter> devPanelRequestInsightFilter(
       RequestStats devPanelRequestStats, ExceptionGroups devPanelExceptionGroups,
-      DevPanelProperties properties) {
+      UsageStats devPanelUsageStats, SecurityStats devPanelSecurityStats,
+      TraceStore devPanelTraceStore, DevPanelProperties properties) {
     FilterRegistrationBean<RequestInsightFilter> registration = new FilterRegistrationBean<>(
         new RequestInsightFilter(devPanelRequestStats, devPanelExceptionGroups,
-            properties.getBasePath()));
+            devPanelUsageStats, devPanelSecurityStats, devPanelTraceStore,
+            properties.getBasePath(), properties.getInsights().isTrustForwardedFor()));
     registration.setOrder(REQUEST_FILTER_ORDER);
     registration.setName("devPanelRequestInsightFilter");
     return registration;
@@ -134,11 +192,14 @@ public class InsightsConfiguration {
       ObjectProvider<LogEvents> logs, ExceptionGroups devPanelExceptionGroups,
       RequestStats devPanelRequestStats, EndpointHistory devPanelEndpointHistory,
       DatabaseInsights devPanelDatabaseInsights, OutboundStats devPanelOutboundStats,
-      ObjectProvider<JobStats> jobs, ClockCheck devPanelClockCheck) {
+      ObjectProvider<JobStats> jobs, ClockCheck devPanelClockCheck,
+      ObjectProvider<TomcatCapacity> tomcat, SecurityStats devPanelSecurityStats,
+      ObjectProvider<DependencyChecks> dependencies) {
     return new HealthService(devPanelMetricsService, devPanelMetricsHistory,
         memory.getIfAvailable(), logs.getIfAvailable(), devPanelExceptionGroups,
         devPanelRequestStats, devPanelEndpointHistory, devPanelDatabaseInsights,
-        devPanelOutboundStats, jobs.getIfAvailable(), devPanelClockCheck);
+        devPanelOutboundStats, jobs.getIfAvailable(), devPanelClockCheck,
+        tomcat.getIfAvailable(), devPanelSecurityStats, dependencies.getIfAvailable());
   }
 
   @Bean
@@ -176,10 +237,11 @@ public class InsightsConfiguration {
       AlertEngine devPanelAlertEngine, ClockCheck devPanelClockCheck,
       DeployInfo devPanelDeployInfo, ObjectProvider<LogbackCapture> logback,
       ObjectProvider<MemoryWatch> memory, ObjectProvider<HikariPools> hikari,
-      ObjectProvider<LogLevels> logLevels, DevPanelProperties properties) {
+      ObjectProvider<LogLevels> logLevels, ObjectProvider<DependencyChecks> dependencies,
+      DevPanelProperties properties) {
     return new InsightLifecycle(devPanelInsightScheduler.executor(), devPanelExceptionGroups,
         devPanelEndpointHistory, devPanelAlertEngine, devPanelClockCheck, devPanelDeployInfo,
-        logback, memory, hikari, logLevels,
+        logback, memory, hikari, logLevels, dependencies,
         properties.getInsights().getConnectionLeakThreshold().toMillis());
   }
 
@@ -227,23 +289,48 @@ public class InsightsConfiguration {
   }
 
   @Configuration(proxyBeanMethods = false)
-  @ConditionalOnClass(name = {"org.hibernate.resource.jdbc.spi.StatementInspector",
-      "org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer"})
-  static class HibernateInsights {
-
-    @Bean
-    HibernateSqlCounting devPanelHibernateSqlCounting() {
-      return new HibernateSqlCounting();
-    }
-  }
-
-  @Configuration(proxyBeanMethods = false)
   @ConditionalOnClass(name = "feign.Capability")
   static class FeignInsights {
 
     @Bean
     FeignOutboundCapability devPanelFeignCapability(OutboundStats devPanelOutboundStats) {
       return new FeignOutboundCapability(devPanelOutboundStats);
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(name = "org.springframework.boot.web.embedded.tomcat.TomcatWebServer")
+  static class TomcatInsights {
+
+    @Bean
+    TomcatCapacity devPanelTomcatCapacity(ApplicationContext context) {
+      return context instanceof ServletWebServerApplicationContext web
+          ? new TomcatCapacity(web) : null;
+    }
+  }
+
+  /** Static bean: a post-processor must exist before the DataSource it wraps is created. */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnProperty(prefix = "devpanel.insights", name = "sql-tracing", havingValue = "true",
+      matchIfMissing = true)
+  static class TracingInsights {
+
+    @Bean
+    static JdbcTracing devPanelJdbcTracing() {
+      return new JdbcTracing();
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnProperty(prefix = "devpanel.insights", name = "dependency-checks",
+      havingValue = "true", matchIfMissing = true)
+  static class DependencyInsights {
+
+    @Bean
+    DependencyChecks devPanelDependencyChecks(DataSource dataSource,
+        OutboundStats devPanelOutboundStats, DevPanelProperties properties) {
+      return new DependencyChecks(dataSource, devPanelOutboundStats,
+          properties.getInsights().getDependencies());
     }
   }
 

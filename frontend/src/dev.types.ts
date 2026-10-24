@@ -268,6 +268,14 @@ export interface IDevEndpointRow {
     p95LastHourMs: number;
     sqlPerCall: number;
     sqlMax: number;
+    avgDbMs: number;
+    avgExternalMs: number;
+    avgCodeMs: number;
+    avgRows: number;
+    maxRows: number;
+    avgBytes: number;
+    maxBytes: number;
+    wastedPerCall: number;
   };
   p95SameHourYesterdayMs: number | null;
   p95BeforeDeployMs: number | null;
@@ -279,6 +287,9 @@ export interface IDevSlowRequest {
   status: number;
   ms: number;
   sql: number;
+  dbMs: number;
+  externalMs: number;
+  rows: number;
   traceId: string;
 }
 
@@ -286,8 +297,8 @@ export interface IDevNPlusOne {
   time: string;
   endpoint: string;
   sqlTotal: number;
-  repeats: number;
-  statement: string;
+  wasted: number;
+  repeated: IDevRepeated[];
   traceId: string;
 }
 
@@ -486,4 +497,139 @@ export interface IDevSession {
   clientIp: string | null;
   userAgent: string | null;
   current: boolean;
+}
+
+// ---------- 0.3.0 ----------
+
+export interface IDevSpan {
+  kind: "SQL" | "HTTP";
+  text: string;
+  startMs: number;
+  durationMs: number;
+  error: string | null;
+  rows: number;
+  status: number;
+}
+
+export interface IDevRepeated {
+  statement: string;
+  count: number;
+  totalMs: number;
+}
+
+export interface IDevTraceSummary {
+  id: string;
+  time: string;
+  endpoint: string;
+  status: number;
+  totalMs: number;
+  sqlMs: number;
+  externalMs: number;
+  sqlCount: number;
+  rows: number;
+  reason: "SLOW" | "ERROR" | "N_PLUS_ONE" | "SAMPLE";
+}
+
+export interface IDevTrace extends IDevTraceSummary {
+  path: string;
+  responseBytes: number;
+  user: string | null;
+  tenant: string | null;
+  clientIp: string;
+  truncated: boolean;
+  spans: IDevSpan[];
+  repeated: IDevRepeated[];
+}
+
+export interface IDevUsage {
+  key: string;
+  total: number;
+  last24h: number;
+  lastHour: number;
+  serverErrors: number;
+  p50Ms: number;
+  p95Ms: number;
+  lastSeen: string;
+  lastEndpoint: string;
+  topEndpoints: Record<string, number>;
+  related: string[];
+}
+
+export interface IDevUnused {
+  total: number;
+  since: string;
+  unused: { endpoint: string; handler: string }[];
+}
+
+export interface IDevIpStats {
+  ip: string;
+  requests: number;
+  unauthorized: number;
+  notFound: number;
+  lastMinute: number;
+  users: string[];
+  lastSeen: string;
+  lastPath: string;
+  probes: number;
+  notFoundPaths: string[];
+}
+
+export interface IDevSecurity {
+  top10min: IDevIpStats[];
+  top1h: IDevIpStats[];
+  events: {
+    time: string;
+    ip: string;
+    path: string;
+    status: number;
+    user: string | null;
+    type: string;
+  }[];
+  findings: { type: string; ip: string; critical: boolean; detail: string }[];
+}
+
+export interface IDevTomcat {
+  busyThreads: number;
+  poolThreads: number;
+  maxThreads: number;
+  queued: number;
+  connections: number;
+  maxConnections: number;
+}
+
+export interface IDevDependency {
+  name: string;
+  address: string;
+  up: boolean;
+  lastMs: number;
+  lastCheck: string | null;
+  lastOk: string | null;
+  downSince: string | null;
+  lastError: string | null;
+  uptime: number;
+  history: boolean[];
+}
+
+export interface IDevDeployChange {
+  endpoint: string;
+  callsBefore: number;
+  callsNow: number;
+  p95BeforeMs: number;
+  p95NowMs: number;
+  sqlBefore: number;
+  sqlNow: number;
+}
+
+export interface IDevDeployReport {
+  deployedAt: string;
+  minutesRunning: number;
+  faster: IDevDeployChange[];
+  slower: IDevDeployChange[];
+  unchanged: number;
+  callsBefore: number;
+  errorsBefore: number;
+  callsNow: number;
+  errorsNow: number;
+  newErrors: IDevExceptionGroup[];
+  noHistory: boolean;
 }
