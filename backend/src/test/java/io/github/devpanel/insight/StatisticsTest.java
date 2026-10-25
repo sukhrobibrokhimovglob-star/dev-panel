@@ -22,6 +22,21 @@ class StatisticsTest {
   }
 
   @Test
+  void histogramsSurviveStorageAndCountCallsWithinATarget() {
+    LatencyHistogram histogram = new LatencyHistogram();
+    for (int ms = 1; ms <= 1000; ms++) {
+      histogram.record(ms);
+    }
+    LatencyHistogram stored = LatencyHistogram.parse(histogram.serialize());
+    assertThat(stored.count()).isEqualTo(1000);
+    assertThat(stored.maxMs()).isEqualTo(1000);
+    assertThat(stored.percentileMs(95)).isEqualTo(histogram.percentileMs(95));
+    // within one bucket (12%) of the exact 500
+    assertThat(stored.countAtMost(500)).isBetween(450L, 560L);
+    assertThat(LatencyHistogram.parse("garbage").count()).isZero();
+  }
+
+  @Test
   void trendFindsASteadyRiseAndWhenItHitsALimit() {
     List<Long> times = new ArrayList<>();
     List<Double> values = new ArrayList<>();

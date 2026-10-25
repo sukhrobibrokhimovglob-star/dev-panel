@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  */
 public class LogEvents {
 
-  static final int KEEP = 2000;
+  static final int KEEP = 5000;
   private static final int KEEP_LEAKS = 50;
   private static final String HIKARI_LEAK_LOGGER = "com.zaxxer.hikari.pool.ProxyLeakTask";
 
@@ -30,15 +30,25 @@ public class LogEvents {
   private final MinuteCounter errors = new MinuteCounter();
   private final MinuteCounter warnings = new MinuteCounter();
   private final ExceptionGroups exceptionGroups;
+  private final LogPrivacy privacy;
 
   public LogEvents(ExceptionGroups exceptionGroups) {
+    this(exceptionGroups, null);
+  }
+
+  /** @param privacy null to not look for personal data */
+  public LogEvents(ExceptionGroups exceptionGroups, LogPrivacy privacy) {
     this.exceptionGroups = exceptionGroups;
+    this.privacy = privacy;
   }
 
   public void accept(long time, String level, String logger, String thread, String message,
       String traceId, Throwable throwable, String errorText) {
     LogLine line = new LogLine(sequence.incrementAndGet(), time, level, logger, thread,
         message, traceId, errorText);
+    if (privacy != null) {
+      privacy.inspect(logger, level, message, time);
+    }
     synchronized (lines) {
       lines.addLast(line);
       if (lines.size() > KEEP) {
@@ -62,6 +72,19 @@ public class LogEvents {
     for (Consumer<LogLine> listener : listeners) {
       listener.accept(line);
     }
+  }
+
+  /** The kept lines of one request, oldest first. */
+  public List<LogLine> byTrace(String traceId) {
+    List<LogLine> matching = new ArrayList<>();
+    synchronized (lines) {
+      for (LogLine line : lines) {
+        if (traceId.equals(line.traceId())) {
+          matching.add(line);
+        }
+      }
+    }
+    return matching;
   }
 
   /** The kept lines matching the filter, oldest first, at most {@code limit}. */

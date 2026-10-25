@@ -2,6 +2,28 @@ import axios from "axios";
 import { getCurrentLocale } from "./i18n";
 import { useDevStore } from "./dev.store";
 import {
+  IDevAction,
+  IDevAdvisor,
+  IDevCatalogEntry,
+  IDevDataPage,
+  IDevEndpointDetails,
+  IDevExplainReq,
+  IDevPlan,
+  IDevPrivacyFinding,
+  IDevProfile,
+  IDevProfileSummary,
+  IDevRiskItem,
+  IDevRisks,
+  IDevRunnerReq,
+  IDevRunnerResponse,
+  IDevSloGoal,
+  IDevSloStatus,
+  IDevSmokeCheck,
+  IDevSmokeRun,
+  IDevSmokeView,
+  IDevStartup,
+  IDevTests,
+  IDevUsual,
   IDevAccount,
   IDevAccountCreateReq,
   IDevDependency,
@@ -243,7 +265,115 @@ export const useDevApi = () => {
   const GET_DEPLOY_REPORT = () =>
     devInstance.get<IDevDeployReport>("/deploys/report");
 
+  // ---------- 0.4.0 ----------
+  const GET_RISKS = () => devInstance.get<IDevRisks>("/risks");
+  const RUN_RISKS = () =>
+    devInstance.post<IDevRisks>("/risks/run", {}, { timeout: 180000 });
+  const SNOOZE_RISK = (key: string, days: number) =>
+    devInstance.post("/risks/snooze", { key, days });
+  const ACCEPT_RISK = (key: string, reason: string) =>
+    devInstance.post("/risks/accept", { key, reason });
+  const REOPEN_RISK = (key: string) => devInstance.post("/risks/reopen", { key });
+  const GET_RISK_CHANGES = (since: string) =>
+    devInstance.get<{ appeared: IDevRiskItem[]; resolved: IDevRiskItem[] }>(
+      "/risks/changes",
+      { params: { since } },
+    );
+  const GET_STARTUP = () => devInstance.get<IDevStartup>("/startup");
+  const GET_ADVISOR = () =>
+    devInstance.get<IDevAdvisor>("/database/advisor", { timeout: 120000 });
+  const REFRESH_ADVISOR = () =>
+    devInstance.post<IDevAdvisor>("/database/advisor/refresh", {}, { timeout: 180000 });
+  const EXPLAIN = (body: IDevExplainReq) =>
+    devInstance.post<IDevPlan>("/database/explain", body, { timeout: 60000 });
+  const GET_PRIVACY = () => devInstance.get<IDevPrivacyFinding[]>("/privacy/logs");
+  const GET_SLO = () => devInstance.get<IDevSloStatus[]>("/slo");
+  const CREATE_SLO = (body: { endpoint: string; targetMs: number; objective: number }) =>
+    devInstance.post<IDevSloGoal>("/slo", body);
+  const DELETE_SLO = (id: number) => devInstance.delete(`/slo/${id}`);
+  const GET_CATALOG = () => devInstance.get<IDevCatalogEntry[]>("/endpoints/catalog");
+  const GET_ENDPOINT_DETAILS = (endpoint: string) =>
+    devInstance.get<IDevEndpointDetails>("/endpoints/details", { params: { endpoint } });
+  const GET_USUAL = () => devInstance.get<Record<string, IDevUsual>>("/requests/usual");
+  const RUNNER_SEND = (body: IDevRunnerReq) =>
+    devInstance.post<IDevRunnerResponse>("/runner/send", body, { timeout: 90000 });
+  const GET_SMOKE = () => devInstance.get<IDevSmokeView[]>("/smoke");
+  const CREATE_SMOKE = (body: IDevSmokeCheck) =>
+    devInstance.post<IDevSmokeCheck>("/smoke", body);
+  const UPDATE_SMOKE = (id: number, body: IDevSmokeCheck) =>
+    devInstance.put<IDevSmokeCheck>(`/smoke/${id}`, body);
+  const DELETE_SMOKE = (id: number) => devInstance.delete(`/smoke/${id}`);
+  const RUN_SMOKE = (id?: number) =>
+    devInstance.post<IDevSmokeRun[]>("/smoke/run", id ? { id } : {}, { timeout: 180000 });
+  const START_PROFILE = (seconds: number, scope: string) =>
+    devInstance.post<IDevProfile>("/profiler/start", { seconds, scope });
+  const GET_PROFILES = () => devInstance.get<IDevProfileSummary[]>("/profiler");
+  const GET_PROFILE = (id: string) => devInstance.get<IDevProfile>(`/profiler/${id}`);
+  const GET_TESTS = () => devInstance.get<IDevTests>("/tests");
+  const UPLOAD_TESTS = (content: string) =>
+    devInstance.post<{ kind: string }>("/tests/upload", { content }, { timeout: 120000 });
+  const GET_DATA_TABLES = () => devInstance.get<IDevSchemaTable[]>("/data/tables");
+  const GET_DATA_ROWS = (params: {
+    schema: string;
+    table: string;
+    page: number;
+    size: number;
+    sort?: string;
+    desc?: boolean;
+    filter?: string[];
+  }) =>
+    devInstance.get<IDevDataPage>("/data/rows", {
+      params,
+      // filter=a&filter=b, as Spring reads a list
+      paramsSerializer: { indexes: null },
+    });
+  const GET_PANEL_AUDIT = (params: {
+    username?: string;
+    action?: string;
+    page: number;
+    size: number;
+  }) =>
+    devInstance.get<{ content: IDevAction[]; total: number }>("/panel-audit", { params });
+  const GET_WEEKLY_REPORT = (download = false) =>
+    devInstance.get<Blob>("/report/weekly", {
+      params: { download },
+      responseType: "blob",
+      timeout: 120000,
+    });
+
   return {
+    GET_RISKS,
+    RUN_RISKS,
+    SNOOZE_RISK,
+    ACCEPT_RISK,
+    REOPEN_RISK,
+    GET_RISK_CHANGES,
+    GET_STARTUP,
+    GET_ADVISOR,
+    REFRESH_ADVISOR,
+    EXPLAIN,
+    GET_PRIVACY,
+    GET_SLO,
+    CREATE_SLO,
+    DELETE_SLO,
+    GET_CATALOG,
+    GET_ENDPOINT_DETAILS,
+    GET_USUAL,
+    RUNNER_SEND,
+    GET_SMOKE,
+    CREATE_SMOKE,
+    UPDATE_SMOKE,
+    DELETE_SMOKE,
+    RUN_SMOKE,
+    START_PROFILE,
+    GET_PROFILES,
+    GET_PROFILE,
+    GET_TESTS,
+    UPLOAD_TESTS,
+    GET_DATA_TABLES,
+    GET_DATA_ROWS,
+    GET_PANEL_AUDIT,
+    GET_WEEKLY_REPORT,
     GET_TRACES,
     GET_TRACE,
     GET_USAGE,

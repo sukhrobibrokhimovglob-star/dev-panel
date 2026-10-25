@@ -48,7 +48,10 @@ public class DevMetricsController {
         version == null ? "dev" : version,
         Instant.ofEpochMilli(ManagementFactory.getRuntimeMXBean().getStartTime()),
         new Features(properties.getQuery().isEnabled(), properties.getQuery().isUpdateEnabled(),
-            properties.getFiles().isEnabled(), properties.getAudit().isEnabled()));
+            properties.getFiles().isEnabled(), properties.getAudit().isEnabled(),
+            properties.getInsights().isEnabled() && properties.getInsights().isApiRunner(),
+            properties.getInsights().isEnabled() && properties.getInsights().isProfiler(),
+            properties.getInsights().isEnabled()));
   }
 
   @GetMapping("/metrics")
@@ -77,6 +80,7 @@ public class DevMetricsController {
   }
 
   /** Which optional sections are switched on, so the UI shows only those. */
-  public record Features(boolean query, boolean queryUpdate, boolean files, boolean audit) {
+  public record Features(boolean query, boolean queryUpdate, boolean files, boolean audit,
+                         boolean apiRunner, boolean profiler, boolean insights) {
   }
 }

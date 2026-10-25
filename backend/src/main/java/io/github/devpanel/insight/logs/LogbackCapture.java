@@ -35,9 +35,11 @@ public class LogbackCapture extends AppenderBase<ILoggingEvent> {
       return false;
     }
     Logger root = context.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    if (root.getAppender(NAME) != null) {
+    if (root.getAppender(NAME) == this) {
       return true;
     }
+    // A capture of an earlier context in this JVM (a restart, another test) hands over
+    root.detachAppender(NAME);
     setContext(context);
     start();
     root.addAppender(this);

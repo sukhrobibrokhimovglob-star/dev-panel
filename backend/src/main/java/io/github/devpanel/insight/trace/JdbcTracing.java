@@ -130,8 +130,14 @@ public class JdbcTracing implements BeanPostProcessor {
 
   private static final class StatementHandler extends Passthrough {
 
+    private static final int MAX_PARAMETERS = 100;
+    private static final int MAX_PARAMETER_TEXT = 300;
+
     private final String preparedSql;
     private RequestRecorder.Span lastSpan;
+    /** Bound values by index, kept only while a request is recorded. */
+    private java.util.TreeMap<Integer, Object> parameters;
+    private int batched;
 
     StatementHandler(Statement target, String preparedSql) {
       super(target);
@@ -146,6 +152,9 @@ public class JdbcTracing implements BeanPostProcessor {
       }
       String name = method.getName();
       RequestRecorder recorder = RequestRecorder.current();
+      if (recorder != null) {
+        remember(name, args);
+      }
       if (recorder == null || !EXECUTE.contains(name)) {
         Object result = call(method, args);
         if (recorder != null && result instanceof ResultSet resultSet
@@ -156,19 +165,57 @@ public class JdbcTracing implements BeanPostProcessor {
       }
       String sql = args != null && args.length > 0 && args[0] instanceof String text
           ? text : preparedSql;
+      boolean batch = name.endsWith("Batch");
+      if (batch && batched > 1) {
+        sql = "[batch ×" + batched + "] " + sql;
+      }
+      Object[] bound = !batch && sql == preparedSql && parameters != null
+          ? parameters.values().toArray() : null;
+      if (batch) {
+        batched = 0;
+      }
       long start = System.nanoTime();
       try {
         Object result = call(method, args);
-        lastSpan = recorder.sql(sql, start, System.nanoTime() - start, null);
+        lastSpan = recorder.sql(sql, start, System.nanoTime() - start, null, bound);
         if (result instanceof ResultSet resultSet) {
           return proxy(ResultSet.class, new ResultSetHandler(resultSet, recorder, lastSpan));
         }
         return result;
       } catch (Throwable e) {
         lastSpan = recorder.sql(sql, start, System.nanoTime() - start,
-            e.getClass().getSimpleName() + ": " + e.getMessage());
+            e.getClass().getSimpleName() + ": " + e.getMessage(), bound);
         throw e;
       }
+    }
+
+    /** setString(1, "x"), setNull(2, type), clearParameters(), addBatch() ... */
+    private void remember(String name, Object[] args) {
+      if ("clearParameters".equals(name)) {
+        parameters = null;
+        return;
+      }
+      if ("addBatch".equals(name)) {
+        batched++;
+        return;
+      }
+      if (!name.startsWith("set") || args == null || args.length < 2
+          || !(args[0] instanceof Integer index) || index < 1 || index > MAX_PARAMETERS) {
+        return;
+      }
+      if (parameters == null) {
+        parameters = new java.util.TreeMap<>();
+      }
+      Object value = "setNull".equals(name) ? null : args[1];
+      if (value instanceof String text && text.length() > MAX_PARAMETER_TEXT) {
+        value = text.substring(0, MAX_PARAMETER_TEXT);
+      } else if (value != null && !(value instanceof Number || value instanceof Boolean
+          || value instanceof String || value instanceof java.util.Date
+          || value instanceof java.time.temporal.Temporal || value instanceof java.util.UUID
+          || value instanceof Character || value instanceof Enum<?>)) {
+        value = value instanceof byte[] bytes ? bytes : value.getClass().getSimpleName();
+      }
+      parameters.put(index, value);
     }
   }
 

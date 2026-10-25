@@ -1,2 +1,4 @@
 org.springframework.boot.env.EnvironmentPostProcessor=\
 io.github.devpanel.DevPanelPropertiesFile
+org.springframework.context.ApplicationContextInitializer=\
+io.github.devpanel.insight.startup.StartupRecorder

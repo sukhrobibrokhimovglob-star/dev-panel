@@ -51,7 +51,13 @@ public class AlertEngine {
   private final Deque<AlertEvent> events = new ArrayDeque<>();
   private final Instant started = Instant.now();
   private LocalDate summarySentOn;
+  private LocalDate digestSentOn;
+  private boolean deployImpactSent;
   private volatile String lastDeliveryError;
+  private volatile io.github.devpanel.insight.risk.RiskEngine risks;
+  private volatile io.github.devpanel.insight.deploy.DeployReport deployReport;
+  private volatile java.time.DayOfWeek digestDay;
+  private volatile boolean riskAlerts = true;
 
   /** @param summaryAt null for no daily summary */
   public AlertEngine(HealthService health, Notifier notifier, RequestStats requests,
@@ -62,6 +68,22 @@ public class AlertEngine {
     this.exceptions = exceptions;
     this.instance = instance;
     this.summaryAt = summaryAt;
+  }
+
+  /**
+   * The weekly risk digest and the deploy impact message need these; without them only health
+   * alerts and the daily summary are sent.
+   */
+  public void useRisks(io.github.devpanel.insight.risk.RiskEngine engine,
+      io.github.devpanel.insight.deploy.DeployReport report, java.time.DayOfWeek day,
+      boolean alertUrgentRisks) {
+    this.risks = engine;
+    this.deployReport = report;
+    this.digestDay = day;
+    this.riskAlerts = alertUrgentRisks;
+    if (engine != null) {
+      engine.onUrgent(this::riskBecameUrgent);
+    }
   }
 
   /** Called by the panel's scheduler once a minute. */
@@ -97,6 +119,103 @@ public class AlertEngine {
       }
     }
     sendSummaryIfDue(report);
+    sendDigestIfDue();
+    sendDeployImpactIfDue();
+  }
+
+  /** A risk turned critical or its limit is less than a week away. */
+  void riskBecameUrgent(io.github.devpanel.insight.risk.RiskStore.View view) {
+    if (!riskAlerts) {
+      return;
+    }
+    io.github.devpanel.insight.risk.Risk risk = view.risk();
+    Status status = risk.severity() == io.github.devpanel.insight.risk.Risk.Severity.CRITICAL
+        ? Status.CRITICAL : Status.WARNING;
+    AlertEvent event = new AlertEvent(Instant.now(), "risk." + risk.key(), risk.area(), status,
+        "🔮 " + risk.title(), risk.impact() + (risk.fix() == null ? "" : "\nWhat to do: "
+            + risk.fix()), false);
+    fire(event);
+  }
+
+  private void sendDigestIfDue() {
+    io.github.devpanel.insight.risk.RiskEngine engine = risks;
+    if (engine == null || digestDay == null || summaryAt == null || !notifier.configured()) {
+      return;
+    }
+    LocalDate today = LocalDate.now();
+    if (today.getDayOfWeek() != digestDay || LocalTime.now().isBefore(summaryAt)
+        || today.equals(digestSentOn)) {
+      return;
+    }
+    digestSentOn = today;
+    deliver(digest(engine), Map.of("digest", true, "instance", instance));
+  }
+
+  /** The weekly message: open risks by importance, what appeared and what was fixed. */
+  String digest(io.github.devpanel.insight.risk.RiskEngine engine) {
+    io.github.devpanel.insight.risk.RiskEngine.Overview overview = engine.overview();
+    io.github.devpanel.insight.risk.RiskEngine.Changes week =
+        engine.changesSince(Instant.now().minus(Duration.ofDays(7)));
+    StringBuilder text = new StringBuilder("🔮 Weekly risks — ").append(instance).append('\n');
+    text.append("Open: ").append(overview.counts().get("CRITICAL")).append(" critical, ")
+        .append(overview.counts().get("WARNING")).append(" warnings, ")
+        .append(overview.counts().get("INFO")).append(" notes.\n");
+    text.append("This week: ").append(week.appeared().size()).append(" new, ")
+        .append(week.resolved().size()).append(" resolved.\n\nMost important:\n");
+    overview.open().stream().filter(view -> !view.silenced()).limit(7).forEach(view -> {
+      io.github.devpanel.insight.risk.Risk risk = view.risk();
+      text.append(switch (risk.severity()) {
+        case CRITICAL -> "🔴 ";
+        case WARNING -> "🟠 ";
+        case INFO -> "🔵 ";
+      }).append(risk.title());
+      if (risk.daysLeft() != null) {
+        text.append(" (in ~").append(Math.round(risk.daysLeft())).append(" days)");
+      }
+      text.append('\n');
+    });
+    if (!week.resolved().isEmpty()) {
+      text.append("\nResolved: ").append(week.resolved().stream().limit(5)
+          .map(view -> view.risk().title()).collect(Collectors.joining("; ")));
+    }
+    return text.toString();
+  }
+
+  /** One message an hour after a start: what the deploy changed. */
+  private void sendDeployImpactIfDue() {
+    io.github.devpanel.insight.deploy.DeployReport reportBuilder = deployReport;
+    if (deployImpactSent || reportBuilder == null || !notifier.configured()
+        || Instant.now().isBefore(started.plus(Duration.ofMinutes(60)))) {
+      return;
+    }
+    deployImpactSent = true;
+    io.github.devpanel.insight.deploy.DeployReport.Report report = reportBuilder.build();
+    if (report.noHistory()) {
+      return;
+    }
+    StringBuilder text = new StringBuilder("🚀 Deploy impact after 1 h — ").append(instance)
+        .append('\n');
+    if (!report.faster().isEmpty()) {
+      text.append("✅ Faster: ").append(report.faster().stream().limit(3)
+          .map(change -> change.endpoint() + " " + change.p95BeforeMs() + "→" + change.p95NowMs()
+              + " ms").collect(Collectors.joining(", "))).append('\n');
+    }
+    if (!report.slower().isEmpty()) {
+      text.append("⚠️ Slower: ").append(report.slower().stream().limit(3)
+          .map(change -> change.endpoint() + " " + change.p95BeforeMs() + "→" + change.p95NowMs()
+              + " ms").collect(Collectors.joining(", "))).append('\n');
+    }
+    if (!report.newErrors().isEmpty()) {
+      text.append("🆕 New errors: ").append(report.newErrors().size()).append('\n');
+    }
+    io.github.devpanel.insight.risk.RiskEngine engine = risks;
+    if (engine != null) {
+      io.github.devpanel.insight.risk.RiskEngine.Changes changes =
+          engine.changesSince(report.deployedAt());
+      text.append("Risks: ").append(changes.appeared().size()).append(" new, ")
+          .append(changes.resolved().size()).append(" resolved");
+    }
+    deliver(text.toString(), Map.of("deployImpact", true, "instance", instance));
   }
 
   public void sendTest() throws IOException {

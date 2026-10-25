@@ -44,6 +44,15 @@
           stroke-linejoin="round"
         />
         <line
+          v-for="marker in markers"
+          :key="marker.key"
+          :x1="marker.x"
+          :x2="marker.x"
+          y1="0"
+          :y2="H"
+          class="dev-chart__deploy"
+        />
+        <line
           v-if="hover != null"
           :x1="x(hover)"
           :x2="x(hover)"
@@ -52,6 +61,14 @@
           class="dev-chart__cursor"
         />
       </svg>
+      <span
+        v-for="marker in markers"
+        :key="`label-${marker.key}`"
+        class="dev-chart__deploy-label"
+        :style="{ left: `${(marker.x / W) * 100}%` }"
+        :title="marker.title"
+        >🚀</span
+      >
       <div
         v-if="hover != null"
         class="dev-chart__tip"
@@ -75,8 +92,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import moment from "moment";
+import { useI18n } from "vue-i18n";
+import { useDeploys } from "../dev.utils";
 
 export interface IDevChartSeries {
   name: string;
@@ -92,9 +111,39 @@ const props = withDefaults(
     // Berilmasa eng katta qiymatdan olinadi (masalan, % uchun 100)
     max?: number;
     format?: (value: number) => string;
+    // Deploylar vertikal chiziq bo'lib chiqadi: o'zgarish qaysi relizdan boshlangani ko'rinadi
+    deployMarkers?: boolean;
   }>(),
-  { max: undefined, format: (value: number) => String(Math.round(value)) },
+  {
+    max: undefined,
+    format: (value: number) => String(Math.round(value)),
+    deployMarkers: true,
+  },
 );
+
+const { t } = useI18n();
+const deploys = useDeploys();
+onMounted(() => {
+  if (props.deployMarkers) deploys.load();
+});
+
+const markers = computed(() => {
+  if (!props.deployMarkers || props.times.length < 2) return [];
+  const first = Date.parse(props.times[0]);
+  const last = Date.parse(props.times[props.times.length - 1]);
+  if (!(last > first)) return [];
+  return (deploys.list.value ?? [])
+    .map((deploy) => ({ deploy, at: Date.parse(deploy.startedAt) }))
+    .filter(({ at }) => at > first && at <= last)
+    .map(({ deploy, at }) => ({
+      key: `${deploy.host}-${deploy.startedAt}`,
+      x: ((at - first) / (last - first)) * W,
+      title: t("devPanel.chart.deploy", {
+        time: moment(at).format("DD.MM HH:mm"),
+        version: deploy.version || deploy.commit || "",
+      }),
+    }));
+});
 
 const W = 600;
 const H = 140;
@@ -193,6 +242,21 @@ const onMove = (event: MouseEvent) => {
   stroke: var(--el-border-color-lighter);
   stroke-dasharray: 3 4;
   vector-effect: non-scaling-stroke;
+}
+
+.dev-chart__deploy {
+  stroke: #8b5cf6;
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.dev-chart__deploy-label {
+  position: absolute;
+  top: -2px;
+  font-size: 11px;
+  transform: translateX(-50%);
+  cursor: help;
 }
 
 .dev-chart__cursor {

@@ -4,6 +4,7 @@ import io.github.devpanel.account.DevAccountController;
 import io.github.devpanel.account.DevAccountRepository;
 import io.github.devpanel.account.DevAccountService;
 import io.github.devpanel.account.DevLoginAttempts;
+import io.github.devpanel.audit.DevActionLog;
 import io.github.devpanel.audit.DevAuditController;
 import io.github.devpanel.audit.DevRequestAuditFilter;
 import io.github.devpanel.audit.DevRequestAuditRepository;
@@ -15,6 +16,7 @@ import io.github.devpanel.metrics.DevMetricsController;
 import io.github.devpanel.metrics.DevMetricsHistory;
 import io.github.devpanel.metrics.DevMetricsService;
 import io.github.devpanel.metrics.HikariPools;
+import io.github.devpanel.query.DataBrowser;
 import io.github.devpanel.query.DevQueryController;
 import io.github.devpanel.query.DevQueryExcelWriter;
 import io.github.devpanel.query.DevQueryService;
@@ -122,6 +124,11 @@ public class DevPanelAutoConfiguration {
   }
 
   @Bean
+  DevActionLog devPanelActionLog() {
+    return new DevActionLog(jdbcTemplate);
+  }
+
+  @Bean
   DevRequestAuditRepository devPanelAuditRepository() {
     return new DevRequestAuditRepository(jdbcTemplate);
   }
@@ -207,6 +214,12 @@ public class DevPanelAutoConfiguration {
       DevPanelProperties.Query query = properties.getQuery();
       return new DevQueryService(dataSource, query.getTimeout(), query.getMaxRows(),
           query.getMaxUpdatedRows(), query.isUpdateEnabled());
+    }
+
+    @Bean
+    DataBrowser devPanelDataBrowser(DataSource dataSource, DevQueryService devPanelQueryService,
+        DevPanelProperties properties) {
+      return new DataBrowser(dataSource, devPanelQueryService, properties.getQuery().getTimeout());
     }
   }
 

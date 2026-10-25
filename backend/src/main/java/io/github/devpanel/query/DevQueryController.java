@@ -1,5 +1,7 @@
 package io.github.devpanel.query;
 
+import io.github.devpanel.account.DevAccount;
+import io.github.devpanel.audit.DevActionLog;
 import io.github.devpanel.query.DevQueryService.SchemaTable;
 import io.github.devpanel.support.DevPanelException;
 import io.github.devpanel.web.DevPanelApi;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -38,27 +41,57 @@ public class DevQueryController {
 
   private final DevQueryService queryService;
   private final ObjectProvider<DevQueryExcelWriter> excelWriter;
+  private final DataBrowser dataBrowser;
+  private final DevActionLog actions;
 
   public DevQueryController(DevQueryService queryService,
-      ObjectProvider<DevQueryExcelWriter> excelWriter) {
+      ObjectProvider<DevQueryExcelWriter> excelWriter, DataBrowser dataBrowser,
+      DevActionLog actions) {
     this.queryService = queryService;
     this.excelWriter = excelWriter;
+    this.dataBrowser = dataBrowser;
+    this.actions = actions;
   }
 
   @PostMapping("/query")
-  public List<Map<String, Object>> runQuery(@RequestBody Map<String, String> body) {
-    return queryService.run(queryOf(body));
+  public List<Map<String, Object>> runQuery(DevAccount actor,
+      @RequestBody Map<String, String> body) {
+    List<Map<String, Object>> rows = queryService.run(queryOf(body));
+    actions.record(actor, "query.select", null, queryOf(body));
+    return rows;
+  }
+
+  /** Read-only table browsing; {@code filter}: column:operator:value, repeatable. */
+  @GetMapping("/data/tables")
+  public List<SchemaTable> dataTables() {
+    return dataBrowser.tables();
+  }
+
+  @GetMapping("/data/rows")
+  public DataBrowser.Page dataRows(DevAccount actor, @RequestParam String schema,
+      @RequestParam String table, @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "50") int size, @RequestParam(required = false) String sort,
+      @RequestParam(defaultValue = "false") boolean desc,
+      @RequestParam(required = false) List<String> filter) {
+    DataBrowser.Page result = dataBrowser.rows(schema, table, page, size, sort, desc, filter);
+    if (page == 0) {
+      actions.record(actor, "data.browse", schema + "." + table,
+          filter == null ? null : String.join("; ", filter));
+    }
+    return result;
   }
 
   /** The same query as {@link #runQuery}, as an .xlsx with the column names as the header row. */
   @PostMapping("/query/excel")
-  public ResponseEntity<byte[]> runQueryToExcel(@RequestBody Map<String, String> body) {
+  public ResponseEntity<byte[]> runQueryToExcel(DevAccount actor,
+      @RequestBody Map<String, String> body) {
     DevQueryExcelWriter writer = excelWriter.getIfAvailable();
     if (writer == null) {
       throw new DevPanelException(HttpStatus.NOT_IMPLEMENTED,
           "Excel export needs Apache POI (org.apache.poi:poi-ooxml) on the classpath");
     }
     byte[] workbook = queryService.runWith(queryOf(body), writer);
+    actions.record(actor, "query.excel", null, queryOf(body));
     String filename = "query-" + LocalDateTime.now().format(FILE_TIMESTAMP) + ".xlsx";
     return ResponseEntity.ok()
         .contentType(XLSX)
@@ -68,8 +101,11 @@ public class DevQueryController {
   }
 
   @PostMapping("/query/update")
-  public UpdateResult runUpdate(@RequestBody Map<String, String> body) {
-    return new UpdateResult(queryService.update(queryOf(body)));
+  public UpdateResult runUpdate(DevAccount actor, @RequestBody Map<String, String> body) {
+    UpdateResult result = new UpdateResult(queryService.update(queryOf(body)));
+    actions.record(actor, "query.update", null,
+        result.updatedRows() + " rows: " + queryOf(body));
+    return result;
   }
 
   /** Tables and columns the SQL editor offers as completions. */

@@ -82,19 +82,64 @@
           <span>🕒 {{ formatTime(trace.time) }}</span>
         </div>
 
-        <!-- Takrorlangan so'rovlar (N+1) -->
+        <!-- So'rov o'zi: curl, qayta yuborish, test -->
+        <details v-if="trace.request" class="wf-request mb-3">
+          <summary>
+            <b>{{ $t("devPanel.waterfall.request") }}</b>
+            <code class="ml-2">{{ trace.request.method }} {{ trace.path }}{{ trace.request.query ? `?${trace.request.query}` : "" }}</code>
+            <el-tag v-if="trace.request.authorized" size="small" class="ml-2">🔑 {{ $t("devPanel.waterfall.authorized") }}</el-tag>
+          </summary>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <el-button size="small" @click="copyCurl">{{ $t("devPanel.runner.copyCurl") }}</el-button>
+            <el-button size="small" type="primary" plain @click="replay">{{ $t("devPanel.waterfall.replay") }}</el-button>
+          </div>
+          <pre v-if="Object.keys(trace.request.headers).length" class="wf-pre">{{ Object.entries(trace.request.headers).map(([k, v]) => `${k}: ${v}`).join("\n") }}</pre>
+          <pre v-if="trace.request.body" class="wf-pre">{{ prettyJson(trace.request.body) }}</pre>
+        </details>
+        <div v-if="trace.response" class="wf-response mb-3">
+          <b>{{ $t("devPanel.waterfall.response") }}</b>
+          <pre class="wf-pre">{{ prettyJson(trace.response) }}</pre>
+        </div>
+
+        <!-- Takrorlangan so'rovlar: qator-baqator o'qish (N+1) va bittadan yozish alohida -->
         <el-alert
-          v-if="trace.repeated.length"
+          v-if="lookups.length"
           type="warning"
           :closable="false"
-          class="mb-4"
+          class="mb-3"
           :title="$t('devPanel.waterfall.repeated', { wasted })"
         >
-          <div v-for="(item, index) in trace.repeated.slice(0, 5)" :key="index" class="mt-1 text-xs">
+          <div v-for="(item, index) in lookups.slice(0, 5)" :key="index" class="mt-1 text-xs">
             <b>{{ item.count }}×</b> ({{ formatMs(item.totalMs) }})
+            <template v-if="item.exactRepeats && item.exactRepeats > 0">
+              · {{ $t("devPanel.waterfall.sameValues", { count: item.exactRepeats }) }}
+            </template>
             <code class="break-all">{{ item.statement.slice(0, 220) }}</code>
+            <div v-if="item.location" class="wf-loc">📍 {{ item.location }}</div>
           </div>
         </el-alert>
+        <el-alert
+          v-if="writes.length"
+          type="info"
+          :closable="false"
+          class="mb-3"
+          :title="$t('devPanel.waterfall.writesOneByOne', { count: writeCount })"
+          :description="$t('devPanel.waterfall.writesHint')"
+        >
+          <div v-for="(item, index) in writes.slice(0, 5)" :key="index" class="mt-1 text-xs">
+            <el-tag size="small" class="mr-1">{{ item.kind }}</el-tag>
+            <b>{{ item.count }}×</b>
+            <code class="break-all">{{ item.statement.slice(0, 160) }}</code>
+            <div v-if="item.location" class="wf-loc">📍 {{ item.location }}</div>
+          </div>
+        </el-alert>
+        <el-alert
+          v-if="(trace.externalInTransaction ?? 0) > 0"
+          type="warning"
+          :closable="false"
+          class="mb-3"
+          :title="$t('devPanel.waterfall.externalInTx', { count: trace.externalInTransaction })"
+        />
 
         <!-- Vaqt chizig'i -->
         <div class="wf-list">
@@ -166,8 +211,14 @@
             <div v-if="open === index" class="wf-full">
               <div class="wf-full__bar">
                 <span>{{ span.kind }} · {{ span.durationMs.toFixed(2) }} ms</span>
-                <el-button size="small" text @click.stop="copy(span.text)">{{ $t("devPanel.waterfall.copy") }}</el-button>
+                <span>
+                  <el-button v-if="span.kind === 'SQL' && /^\s*\(?\s*(select|with)\b/i.test(span.text)"
+                    size="small" text type="primary" @click.stop="explain(index)">{{ $t("devPanel.explain.button") }}</el-button>
+                  <el-button size="small" text @click.stop="copy(span.text)">{{ $t("devPanel.waterfall.copy") }}</el-button>
+                </span>
               </div>
+              <div v-if="span.location" class="wf-loc mb-1">📍 {{ $t("devPanel.waterfall.location") }}: {{ span.location }}</div>
+              <div v-if="span.inTransaction" class="wf-full__error">⚠ {{ $t("devPanel.waterfall.inTx") }}</div>
               <pre v-if="span.kind === 'SQL'" v-html="highlight(span.text)" />
               <pre v-else>{{ span.text }}</pre>
               <div v-if="span.error" class="wf-full__error">⚠ {{ span.error }}</div>
@@ -183,6 +234,7 @@
         </div>
       </template>
     </div>
+    <DevExplain v-model="explainVisible" :request="explainRequest" />
   </el-dialog>
 </template>
 
@@ -190,8 +242,19 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useDevApi } from "../dev.api";
-import { IDevTrace } from "../dev.types";
-import { copyToClipboard, devErrorMessage, formatBytes, formatMs, formatTime } from "../dev.utils";
+import { useDevStore } from "../dev.store";
+import { IDevExplainReq, IDevTrace } from "../dev.types";
+import {
+  applicationBaseUrl,
+  copyToClipboard,
+  devErrorMessage,
+  formatBytes,
+  formatMs,
+  formatTime,
+  prettyJson,
+  toCurl,
+} from "../dev.utils";
+import DevExplain from "./DevExplain.vue";
 
 const props = defineProps<{ modelValue: boolean; traceId: string | null }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: boolean): void }>();
@@ -216,7 +279,50 @@ const codeMs = computed(() =>
 const percentOf = (ms: number) => Math.round((ms / scale.value) * 1000) / 10;
 // Umumiy vaqtning 10% idan (kamida 50 ms) uzun qadam — ko'zga tashlanadi
 const slowSpan = computed(() => Math.max(50, scale.value * 0.1));
-const wasted = computed(() => (trace.value?.repeated ?? []).reduce((sum, r) => sum + r.count - 1, 0));
+const store = useDevStore();
+// Faqat qayta-qayta o'qish N+1 hisoblanadi; bittadan yozish — boshqa (batching) masala
+const lookups = computed(() =>
+  (trace.value?.repeated ?? []).filter((r) => !r.kind || r.kind === "SELECT"),
+);
+const writes = computed(() =>
+  (trace.value?.repeated ?? []).filter((r) => r.kind && r.kind !== "SELECT" && r.kind !== "OTHER"),
+);
+const wasted = computed(() => lookups.value.reduce((sum, r) => sum + r.count - 1, 0));
+const writeCount = computed(() => writes.value.reduce((sum, r) => sum + r.count, 0));
+
+const explainVisible = ref(false);
+const explainRequest = ref<IDevExplainReq | null>(null);
+const explain = (index: number) => {
+  explainRequest.value = { traceId: trace.value?.id, span: index };
+  explainVisible.value = true;
+};
+
+const requestHeaders = () => {
+  const headers: Record<string, string> = { ...(trace.value?.request?.headers ?? {}) };
+  if (trace.value?.request?.authorized) headers.Authorization = "Bearer <TOKEN>";
+  return headers;
+};
+const fullPath = () =>
+  `${trace.value?.path ?? ""}${trace.value?.request?.query ? `?${trace.value.request.query}` : ""}`;
+
+const copyCurl = () => {
+  if (!trace.value?.request) return;
+  copyToClipboard(toCurl(applicationBaseUrl(), trace.value.request.method, fullPath(),
+    requestHeaders(), trace.value.request.body));
+};
+
+// API runner'da ochiladi: token qo'lda qo'yiladi (u hech qachon saqlanmaydi)
+const replay = () => {
+  if (!trace.value?.request) return;
+  const headers = { ...trace.value.request.headers };
+  store.focus = {
+    tab: "runner",
+    endpoint: trace.value.endpoint,
+    runner: { method: trace.value.request.method, path: fullPath(), headers,
+      body: trace.value.request.body },
+  };
+  emit("update:modelValue", false);
+};
 
 const parts = computed(() => {
   if (!trace.value) return [];
@@ -275,6 +381,33 @@ watch(
 </script>
 
 <style scoped>
+.wf-request summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.wf-pre {
+  max-height: 260px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.wf-response {
+  font-size: 13px;
+}
+
+.wf-loc {
+  font-size: 12px;
+  color: #8b5cf6;
+  word-break: break-all;
+}
+
 .wf-head {
   display: flex;
   flex-wrap: wrap;

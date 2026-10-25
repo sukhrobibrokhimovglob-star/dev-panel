@@ -19,7 +19,40 @@ import io.github.devpanel.insight.jobs.JobRunAspect;
 import io.github.devpanel.insight.jobs.JobStats;
 import io.github.devpanel.insight.logs.ExceptionGroups;
 import io.github.devpanel.insight.logs.LiveLogs;
+import io.github.devpanel.account.DevAccountRepository;
+import io.github.devpanel.insight.InsightLifecycle.Periodic;
+import io.github.devpanel.insight.database.DatabaseAdvisor;
+import io.github.devpanel.insight.database.ExplainService;
+import io.github.devpanel.insight.history.DailySnapshots;
 import io.github.devpanel.insight.logs.LogEvents;
+import io.github.devpanel.insight.logs.LogPrivacy;
+import io.github.devpanel.insight.profiler.Profiler;
+import io.github.devpanel.insight.report.WeeklyReport;
+import io.github.devpanel.insight.risk.CertificateChecks;
+import io.github.devpanel.insight.risk.CodeDetector;
+import io.github.devpanel.insight.risk.ConfigDetector;
+import io.github.devpanel.insight.risk.DatabaseDetector;
+import io.github.devpanel.insight.risk.ForecastDetector;
+import io.github.devpanel.insight.risk.PrivacyDetector;
+import io.github.devpanel.insight.risk.RiskDetector;
+import io.github.devpanel.insight.risk.RiskEngine;
+import io.github.devpanel.insight.risk.RiskStore;
+import io.github.devpanel.insight.risk.StartupDetector;
+import io.github.devpanel.insight.runner.ApiRunner;
+import io.github.devpanel.insight.slo.SloService;
+import io.github.devpanel.insight.smoke.SmokeChecks;
+import io.github.devpanel.insight.tests.TestReports;
+import io.github.devpanel.insight.tests.TestsDetector;
+import io.github.devpanel.insight.trace.CallSites;
+import io.github.devpanel.insight.trace.RequestRecorder;
+import io.github.devpanel.audit.DevActionLog;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import io.github.devpanel.insight.startup.StartupReport;
+import io.github.devpanel.support.Sensitive;
 import io.github.devpanel.insight.logs.LogbackCapture;
 import io.github.devpanel.insight.memory.MemoryWatch;
 import io.github.devpanel.insight.ops.ConfigViewer;
@@ -64,7 +97,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "devpanel.insights", name = "enabled", havingValue = "true",
     matchIfMissing = true)
-@Import({InsightController.class, InsightsConfiguration.LogbackInsights.class,
+@Import({InsightController.class, InsightToolsController.class,
+    InsightsConfiguration.LogbackInsights.class,
     InsightsConfiguration.MemoryInsights.class, InsightsConfiguration.FeignInsights.class,
     InsightsConfiguration.JobInsights.class, InsightsConfiguration.TomcatInsights.class,
     InsightsConfiguration.TracingInsights.class, InsightsConfiguration.DependencyInsights.class})
@@ -76,6 +110,16 @@ public class InsightsConfiguration {
   @Bean
   InsightScheduler devPanelInsightScheduler() {
     return new InsightScheduler();
+  }
+
+  @Bean
+  Sensitive devPanelSensitive(DevPanelProperties properties) {
+    return new Sensitive(properties.getInsights().getSensitivePatterns());
+  }
+
+  @Bean
+  StartupReport devPanelStartupReport(DataSource dataSource, DeployInfo devPanelDeployInfo) {
+    return new StartupReport(new JdbcTemplate(dataSource), devPanelDeployInfo);
   }
 
   @Bean
@@ -149,11 +193,13 @@ public class InsightsConfiguration {
   FilterRegistrationBean<RequestInsightFilter> devPanelRequestInsightFilter(
       RequestStats devPanelRequestStats, ExceptionGroups devPanelExceptionGroups,
       UsageStats devPanelUsageStats, SecurityStats devPanelSecurityStats,
-      TraceStore devPanelTraceStore, DevPanelProperties properties) {
+      TraceStore devPanelTraceStore, Sensitive devPanelSensitive,
+      DevPanelProperties properties) {
     FilterRegistrationBean<RequestInsightFilter> registration = new FilterRegistrationBean<>(
         new RequestInsightFilter(devPanelRequestStats, devPanelExceptionGroups,
             devPanelUsageStats, devPanelSecurityStats, devPanelTraceStore,
-            properties.getBasePath(), properties.getInsights().isTrustForwardedFor()));
+            properties.getBasePath(), properties.getInsights().isTrustForwardedFor(),
+            devPanelSensitive));
     registration.setOrder(REQUEST_FILTER_ORDER);
     registration.setName("devPanelRequestInsightFilter");
     return registration;
@@ -203,6 +249,128 @@ public class InsightsConfiguration {
   }
 
   @Bean
+  DailySnapshots devPanelDailySnapshots(DataSource dataSource,
+      DevMetricsService devPanelMetricsService, DatabaseInsights devPanelDatabaseInsights,
+      ObjectProvider<MemoryWatch> memory, ObjectProvider<TomcatCapacity> tomcat,
+      DeployInfo devPanelDeployInfo) {
+    return new DailySnapshots(new JdbcTemplate(dataSource), devPanelMetricsService,
+        devPanelDatabaseInsights, memory.getIfAvailable(), tomcat.getIfAvailable(),
+        devPanelDeployInfo.current().host());
+  }
+
+  @Bean
+  DatabaseAdvisor devPanelDatabaseAdvisor(DataSource dataSource,
+      DatabaseInsights devPanelDatabaseInsights) {
+    return new DatabaseAdvisor(dataSource, devPanelDatabaseInsights);
+  }
+
+  @Bean
+  ExplainService devPanelExplainService(DataSource dataSource,
+      DatabaseInsights devPanelDatabaseInsights) {
+    return new ExplainService(dataSource, devPanelDatabaseInsights);
+  }
+
+  @Bean
+  SloService devPanelSloService(DataSource dataSource, EndpointHistory devPanelEndpointHistory,
+      RequestStats devPanelRequestStats) {
+    return new SloService(new JdbcTemplate(dataSource), devPanelEndpointHistory,
+        devPanelRequestStats);
+  }
+
+  @Bean
+  CertificateChecks devPanelCertificateChecks(OutboundStats devPanelOutboundStats,
+      ObjectProvider<DependencyChecks> dependencies) {
+    return new CertificateChecks(devPanelOutboundStats, dependencies.getIfAvailable());
+  }
+
+  @Bean
+  TestReports devPanelTestReports(DataSource dataSource, EndpointCatalog devPanelEndpointCatalog,
+      EndpointHistory devPanelEndpointHistory, DeployInfo devPanelDeployInfo) {
+    return new TestReports(new JdbcTemplate(dataSource), devPanelEndpointCatalog,
+        devPanelEndpointHistory, devPanelDeployInfo);
+  }
+
+  @Bean
+  ApiRunner devPanelApiRunner(ApplicationContext context, ConfigurableEnvironment environment,
+      DevPanelProperties properties) {
+    return context instanceof ServletWebServerApplicationContext web
+        && properties.getInsights().isApiRunner()
+        ? new ApiRunner(web, environment, properties.getBasePath()) : null;
+  }
+
+  @Bean
+  SmokeChecks devPanelSmokeChecks(DataSource dataSource, ObjectProvider<ApiRunner> runner,
+      ConfigurableEnvironment environment) {
+    ApiRunner api = runner.getIfAvailable();
+    return api == null ? null : new SmokeChecks(new JdbcTemplate(dataSource), api, environment);
+  }
+
+  @Bean
+  Profiler devPanelProfiler(DevPanelProperties properties) {
+    return properties.getInsights().isProfiler() ? new Profiler() : null;
+  }
+
+  @Bean
+  RiskEngine devPanelRiskEngine(DataSource dataSource, EndpointHistory devPanelEndpointHistory,
+      DailySnapshots devPanelDailySnapshots, ObjectProvider<MemoryWatch> memory,
+      DatabaseInsights devPanelDatabaseInsights, DatabaseAdvisor devPanelDatabaseAdvisor,
+      CertificateChecks devPanelCertificateChecks, SloService devPanelSloService,
+      RequestStats devPanelRequestStats, TraceStore devPanelTraceStore,
+      ConfigurableEnvironment environment, ApplicationContext context,
+      ObjectProvider<LogLevels> logLevels, DevMetricsService devPanelMetricsService,
+      ObjectProvider<TomcatCapacity> tomcat, DevAccountRepository devPanelAccountRepository,
+      ObjectProvider<AlertEngine> alerts, ClockCheck devPanelClockCheck,
+      StartupReport devPanelStartupReport, ObjectProvider<LogPrivacy> privacy,
+      TestReports devPanelTestReports, DevPanelProperties properties) {
+    List<RiskDetector> detectors = new ArrayList<>();
+    detectors.add(new ForecastDetector(devPanelEndpointHistory, devPanelDailySnapshots,
+        memory.getIfAvailable(), devPanelDatabaseInsights, devPanelDatabaseAdvisor,
+        devPanelCertificateChecks, devPanelSloService,
+        properties.getInsights().getSlowRequest().toMillis()));
+    detectors.add(new DatabaseDetector(devPanelDatabaseAdvisor, devPanelDatabaseInsights,
+        () -> recentSql(devPanelTraceStore, devPanelRequestStats)));
+    detectors.add(new CodeDetector(devPanelRequestStats, devPanelTraceStore, environment,
+        properties.getInsights().getNPlusOneThreshold()));
+    detectors.add(new StartupDetector(devPanelStartupReport, devPanelDatabaseInsights));
+    detectors.add(new ConfigDetector(environment, context, logLevels.getIfAvailable(),
+        devPanelMetricsService, tomcat.getIfAvailable(), devPanelDailySnapshots,
+        devPanelAccountRepository, properties, alerts::getIfAvailable, devPanelClockCheck));
+    LogPrivacy logPrivacy = privacy.getIfAvailable();
+    if (logPrivacy != null && properties.getInsights().isLogPrivacy()) {
+      detectors.add(new PrivacyDetector(logPrivacy));
+    }
+    detectors.add(new TestsDetector(devPanelTestReports));
+    return new RiskEngine(detectors, new RiskStore(new JdbcTemplate(dataSource)));
+  }
+
+  /** The SQL texts of recently traced requests, for index suggestions. */
+  static Collection<String> recentSql(TraceStore traces, RequestStats requests) {
+    Set<String> statements = new LinkedHashSet<>();
+    for (TraceStore.TraceSummary summary : traces.list()) {
+      traces.find(summary.id()).ifPresent(trace -> {
+        for (RequestRecorder.Span span : trace.spans()) {
+          if ("SQL".equals(span.getKind()) && statements.size() < 3000) {
+            statements.add(span.getText());
+          }
+        }
+      });
+    }
+    requests.nPlusOneSuspects().forEach(suspect -> suspect.repeated()
+        .forEach(repeated -> statements.add(repeated.statement())));
+    return statements;
+  }
+
+  @Bean
+  WeeklyReport devPanelWeeklyReport(HealthService devPanelHealthService,
+      RiskEngine devPanelRiskEngine, SloService devPanelSloService,
+      EndpointHistory devPanelEndpointHistory, ExceptionGroups devPanelExceptionGroups,
+      DeployInfo devPanelDeployInfo, ObjectProvider<SmokeChecks> smoke) {
+    return new WeeklyReport(devPanelHealthService, devPanelRiskEngine, devPanelSloService,
+        devPanelEndpointHistory, devPanelExceptionGroups, devPanelDeployInfo,
+        smoke.getIfAvailable());
+  }
+
+  @Bean
   AlertEngine devPanelAlertEngine(HealthService devPanelHealthService,
       RequestStats devPanelRequestStats, ExceptionGroups devPanelExceptionGroups,
       DeployInfo devPanelDeployInfo, DevPanelProperties properties) {
@@ -238,11 +406,58 @@ public class InsightsConfiguration {
       DeployInfo devPanelDeployInfo, ObjectProvider<LogbackCapture> logback,
       ObjectProvider<MemoryWatch> memory, ObjectProvider<HikariPools> hikari,
       ObjectProvider<LogLevels> logLevels, ObjectProvider<DependencyChecks> dependencies,
-      DevPanelProperties properties) {
+      StartupReport devPanelStartupReport, DailySnapshots devPanelDailySnapshots,
+      RiskEngine devPanelRiskEngine, ObjectProvider<SmokeChecks> smoke,
+      HealthService devPanelHealthService, DeployReport devPanelDeployReport,
+      DevActionLog devPanelActionLog, ApplicationContext context, DevPanelProperties properties) {
+    DevPanelProperties.Insights insights = properties.getInsights();
+    SmokeChecks smokeChecks = smoke.getIfAvailable();
+    List<Runnable> onReady = new ArrayList<>();
+    onReady.add(() -> CallSites.applicationPackages(applicationPackages(context)));
+    onReady.add(devPanelStartupReport::finish);
+    onReady.add(() -> {
+      devPanelHealthService.useSmokeChecks(smokeChecks);
+      devPanelAlertEngine.useRisks(devPanelRiskEngine, devPanelDeployReport,
+          digestDay(properties.getAlerts().getWeeklyDigestDay()),
+          properties.getAlerts().isRiskAlerts());
+    });
+    List<Periodic> periodic = new ArrayList<>();
+    periodic.add(new Periodic("daily-sample", 30, 60, devPanelDailySnapshots::sample));
+    periodic.add(new Periodic("daily-record", 90, 600, devPanelDailySnapshots::record));
+    long riskEvery = Math.max(60, insights.getRiskInterval().toSeconds());
+    periodic.add(new Periodic("risks", 150, riskEvery, devPanelRiskEngine::run));
+    periodic.add(new Periodic("action-log-cleanup", 600, 86_400, devPanelActionLog::deleteOld));
+    if (smokeChecks != null) {
+      long smokeEvery = Math.max(60, insights.getSmokeInterval().toSeconds());
+      periodic.add(new Periodic("smoke", 120, smokeEvery,
+          () -> smokeChecks.runAll("SCHEDULE", null)));
+    }
     return new InsightLifecycle(devPanelInsightScheduler.executor(), devPanelExceptionGroups,
         devPanelEndpointHistory, devPanelAlertEngine, devPanelClockCheck, devPanelDeployInfo,
         logback, memory, hikari, logLevels, dependencies,
-        properties.getInsights().getConnectionLeakThreshold().toMillis());
+        insights.getConnectionLeakThreshold().toMillis(), onReady, periodic);
+  }
+
+  /** The packages of {@code @SpringBootApplication}, so code locations name the app's own code. */
+  private static List<String> applicationPackages(ApplicationContext context) {
+    try {
+      return org.springframework.boot.autoconfigure.AutoConfigurationPackages
+          .get(context.getAutowireCapableBeanFactory());
+    } catch (IllegalStateException e) {
+      return List.of();
+    }
+  }
+
+  private static java.time.DayOfWeek digestDay(String day) {
+    if (day == null || day.isBlank()) {
+      return null;
+    }
+    try {
+      return java.time.DayOfWeek.valueOf(day.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("devpanel.alerts.weekly-digest-day must be a day like"
+          + " MONDAY, or empty");
+    }
   }
 
   private static LocalTime summaryTime(String value) {
@@ -261,8 +476,15 @@ public class InsightsConfiguration {
   static class LogbackInsights {
 
     @Bean
-    LogEvents devPanelLogEvents(ExceptionGroups devPanelExceptionGroups) {
-      return new LogEvents(devPanelExceptionGroups);
+    LogPrivacy devPanelLogPrivacy(Sensitive devPanelSensitive) {
+      return new LogPrivacy(devPanelSensitive);
+    }
+
+    @Bean
+    LogEvents devPanelLogEvents(ExceptionGroups devPanelExceptionGroups,
+        LogPrivacy devPanelLogPrivacy, DevPanelProperties properties) {
+      return new LogEvents(devPanelExceptionGroups,
+          properties.getInsights().isLogPrivacy() ? devPanelLogPrivacy : null);
     }
 
     @Bean

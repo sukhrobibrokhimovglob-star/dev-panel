@@ -509,6 +509,86 @@ public class DevPanelProperties {
     /** Whose {@code Date} header the server clock is compared with; empty turns it off. */
     private String clockReferenceUrl = "https://www.google.com";
 
+    /**
+     * More kinds of personal data to recognize in logs and to mask in stored bodies, kind →
+     * regular expression, e.g. devpanel.insights.sensitive-patterns.PASSPORT=[A-Z]{2}\\d{7}
+     */
+    private Map<String, String> sensitivePatterns = new LinkedHashMap<>();
+
+    /** Notices personal data (PNFL, tokens, passwords, cards ...) written to the logs. */
+    private boolean logPrivacy = true;
+
+    /** Records what the start did: slow beans, SQL, rows inserted, migrations. */
+    private boolean startupReport = true;
+
+    /** How often the risk detectors look again; database catalog checks run hourly at most. */
+    private Duration riskInterval = Duration.ofMinutes(15);
+
+    /** How often enabled smoke checks run; they also run 2 minutes after each start. */
+    private Duration smokeInterval = Duration.ofMinutes(15);
+
+    /** The API runner: send requests to this application from the panel (read-write accounts). */
+    private boolean apiRunner = true;
+
+    /** The sampling profiler (admins): where the application's own code spends its time. */
+    private boolean profiler = true;
+
+    public Map<String, String> getSensitivePatterns() {
+      return sensitivePatterns;
+    }
+
+    public void setSensitivePatterns(Map<String, String> sensitivePatterns) {
+      this.sensitivePatterns = sensitivePatterns;
+    }
+
+    public boolean isLogPrivacy() {
+      return logPrivacy;
+    }
+
+    public void setLogPrivacy(boolean logPrivacy) {
+      this.logPrivacy = logPrivacy;
+    }
+
+    public boolean isStartupReport() {
+      return startupReport;
+    }
+
+    public void setStartupReport(boolean startupReport) {
+      this.startupReport = startupReport;
+    }
+
+    public Duration getRiskInterval() {
+      return riskInterval;
+    }
+
+    public void setRiskInterval(Duration riskInterval) {
+      this.riskInterval = riskInterval;
+    }
+
+    public Duration getSmokeInterval() {
+      return smokeInterval;
+    }
+
+    public void setSmokeInterval(Duration smokeInterval) {
+      this.smokeInterval = smokeInterval;
+    }
+
+    public boolean isApiRunner() {
+      return apiRunner;
+    }
+
+    public void setApiRunner(boolean apiRunner) {
+      this.apiRunner = apiRunner;
+    }
+
+    public boolean isProfiler() {
+      return profiler;
+    }
+
+    public void setProfiler(boolean profiler) {
+      this.profiler = profiler;
+    }
+
     public boolean isEnabled() {
       return enabled;
     }
@@ -574,6 +654,28 @@ public class DevPanelProperties {
 
     /** How messages name this application; defaults to spring.application.name @ host. */
     private String instanceName;
+
+    /** Day of the weekly risk digest (sent at daily-summary-at); empty for none. */
+    private String weeklyDigestDay = "MONDAY";
+
+    /** Alerts when a risk becomes urgent (critical, or a limit reached within 7 days). */
+    private boolean riskAlerts = true;
+
+    public String getWeeklyDigestDay() {
+      return weeklyDigestDay;
+    }
+
+    public void setWeeklyDigestDay(String weeklyDigestDay) {
+      this.weeklyDigestDay = weeklyDigestDay;
+    }
+
+    public boolean isRiskAlerts() {
+      return riskAlerts;
+    }
+
+    public void setRiskAlerts(boolean riskAlerts) {
+      this.riskAlerts = riskAlerts;
+    }
 
     public String getTelegramBotToken() {
       return telegramBotToken;

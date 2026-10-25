@@ -10,6 +10,7 @@ import io.github.devpanel.insight.ops.DeployInfo;
 import io.github.devpanel.insight.ops.LogLevels;
 import io.github.devpanel.insight.requests.EndpointHistory;
 import io.github.devpanel.metrics.HikariPools;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -41,6 +42,8 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
   private final ObjectProvider<LogLevels> logLevels;
   private final ObjectProvider<DependencyChecks> dependencies;
   private final long leakThresholdMs;
+  private final List<Runnable> onReady;
+  private final List<Periodic> periodic;
   private volatile boolean started;
 
   @SuppressWarnings("checkstyle:ParameterNumber")
@@ -48,7 +51,10 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
       EndpointHistory endpointHistory, AlertEngine alerts, ClockCheck clock, DeployInfo deploys,
       ObjectProvider<LogbackCapture> logback, ObjectProvider<MemoryWatch> memory,
       ObjectProvider<HikariPools> hikari, ObjectProvider<LogLevels> logLevels,
-      ObjectProvider<DependencyChecks> dependencies, long leakThresholdMs) {
+      ObjectProvider<DependencyChecks> dependencies, long leakThresholdMs,
+      List<Runnable> onReady, List<Periodic> periodic) {
+    this.onReady = onReady;
+    this.periodic = periodic;
     this.scheduler = scheduler;
     this.exceptions = exceptions;
     this.endpointHistory = endpointHistory;
@@ -82,6 +88,22 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
       pools.enableLeakDetection(leakThresholdMs);
     }
     deploys.record();
+    for (Runnable task : onReady) {
+      try {
+        task.run();
+      } catch (RuntimeException e) {
+        log.debug("Dev panel start task failed", e);
+      }
+    }
+    for (Periodic task : periodic) {
+      scheduler.scheduleWithFixedDelay(() -> {
+        try {
+          task.task().run();
+        } catch (RuntimeException e) {
+          log.debug("Dev panel background task {} failed", task.name(), e);
+        }
+      }, task.firstAfterSeconds(), Math.max(1, task.everySeconds()), TimeUnit.SECONDS);
+    }
     every(30, exceptions::flush);
     every(300, endpointHistory::flush);
     every(60, alerts::evaluate);
@@ -123,5 +145,9 @@ public class InsightLifecycle implements ApplicationListener<ApplicationReadyEve
       watch.uninstall();
     }
     scheduler.shutdownNow();
+  }
+
+  /** Work repeated on the panel's threads: first after {@code firstAfterSeconds}. */
+  public record Periodic(String name, long firstAfterSeconds, long everySeconds, Runnable task) {
   }
 }

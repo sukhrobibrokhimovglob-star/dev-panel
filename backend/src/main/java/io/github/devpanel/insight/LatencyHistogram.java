@@ -58,6 +58,59 @@ public final class LatencyHistogram {
     return maxMs;
   }
 
+  /** Calls answered within {@code ms} (to the bucket's precision, about 12%). */
+  public long countAtMost(long ms) {
+    long within = 0;
+    int last = bucket(ms);
+    for (int i = 0; i <= last && i < BUCKETS; i++) {
+      within += counts[i];
+    }
+    return within;
+  }
+
+  /** {@code index:count,...} of the non-empty buckets, then {@code |sum|max}; fits a VARCHAR. */
+  public String serialize() {
+    StringBuilder text = new StringBuilder();
+    for (int i = 0; i < BUCKETS; i++) {
+      if (counts[i] > 0) {
+        if (text.length() > 0) {
+          text.append(',');
+        }
+        text.append(i).append(':').append(counts[i]);
+      }
+    }
+    return text.append('|').append(sumMs).append('|').append(maxMs).toString();
+  }
+
+  /** The reverse of {@link #serialize()}; an empty histogram for null or unreadable text. */
+  public static LatencyHistogram parse(String text) {
+    LatencyHistogram histogram = new LatencyHistogram();
+    if (text == null || text.isBlank()) {
+      return histogram;
+    }
+    try {
+      String[] parts = text.split("\\|");
+      if (!parts[0].isEmpty()) {
+        for (String pair : parts[0].split(",")) {
+          int colon = pair.indexOf(':');
+          int index = Integer.parseInt(pair.substring(0, colon));
+          long count = Long.parseLong(pair.substring(colon + 1));
+          if (index >= 0 && index < BUCKETS) {
+            histogram.counts[index] += count;
+            histogram.total += count;
+          }
+        }
+      }
+      if (parts.length > 2) {
+        histogram.sumMs = Long.parseLong(parts[1]);
+        histogram.maxMs = Long.parseLong(parts[2]);
+      }
+    } catch (RuntimeException e) {
+      return new LatencyHistogram();
+    }
+    return histogram;
+  }
+
   private static int bucket(long ms) {
     if (ms <= 1) {
       return 0;

@@ -77,7 +77,8 @@ public class DevLogTraceService {
         break;
       }
     }
-    return new LogTrace(traceId, perFile.stream().flatMap(List::stream).toList(), truncated);
+    return new LogTrace(traceId, perFile.stream().flatMap(List::stream).toList(), truncated,
+        "files");
   }
 
   private List<Path> logFilesNewestFirst(Instant notBefore) {
@@ -163,6 +164,7 @@ public class DevLogTraceService {
   public record Entry(String file, int line, String text) {
   }
 
-  public record LogTrace(String traceId, List<Entry> entries, boolean truncated) {
+  /** {@code source}: "files" (the log folder) or "memory" (the panel's recent lines). */
+  public record LogTrace(String traceId, List<Entry> entries, boolean truncated, String source) {
   }
 }

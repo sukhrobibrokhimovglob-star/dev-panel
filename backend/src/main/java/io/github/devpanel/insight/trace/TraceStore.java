@@ -37,18 +37,31 @@ public class TraceStore {
   }
 
   /**
-   * @param reason why it was kept: SLOW, ERROR, N_PLUS_ONE or SAMPLE
+   * @param reason   why it was kept: SLOW, ERROR, N_PLUS_ONE, RUNNER or SAMPLE
+   * @param request  what was asked, to show, copy as curl and replay (no credentials)
+   * @param response the start of the answer for responses of 400 and above, else null
    */
   public record Trace(String id, Instant time, String endpoint, String path, int status,
                       double totalMs, double sqlMs, double externalMs, int sqlCount, long rows,
                       long responseBytes, String user, String tenant, String clientIp,
                       String reason, boolean truncated, List<RequestRecorder.Span> spans,
-                      List<RequestRecorder.Repeated> repeated) {
+                      List<RequestRecorder.Repeated> repeated, RequestInfo request,
+                      String response, int writeRepeats, int exactRepeats, int sequenceCalls,
+                      int externalInTransaction) {
 
     TraceSummary summary() {
       return new TraceSummary(id, time, endpoint, status, totalMs, sqlMs, externalMs, sqlCount,
           rows, reason);
     }
+  }
+
+  /**
+   * {@code body}: the start of the request body, secrets (password, token ...) masked;
+   * {@code authorized}: it carried an Authorization header, which is never kept.
+   */
+  public record RequestInfo(String method, String query, String contentType,
+                            java.util.Map<String, String> headers, String body,
+                            boolean authorized) {
   }
 
   public record TraceSummary(String id, Instant time, String endpoint, int status, double totalMs,

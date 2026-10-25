@@ -23,6 +23,10 @@ public class DevRequestAuditFilter extends OncePerRequestFilter {
   private static final Logger log = LoggerFactory.getLogger(DevRequestAuditFilter.class);
 
   private static final int MAX_PATH = 255;
+  private static final int MAX_BODY = 4000;
+  /** Set by the request insight filter (inside this one) to the masked start of the body. */
+  public static final String RESPONSE_BODY_ATTRIBUTE =
+      DevRequestAuditFilter.class.getName() + ".RESPONSE_BODY";
 
   private final DevRequestAuditRepository repository;
   private final String basePath;
@@ -61,9 +65,11 @@ public class DevRequestAuditFilter extends OncePerRequestFilter {
     }
     try {
       String path = request.getRequestURI();
+      String body = request.getAttribute(RESPONSE_BODY_ATTRIBUTE) instanceof String text
+          ? (text.length() > MAX_BODY ? text.substring(0, MAX_BODY) : text) : null;
       repository.insert(new AuditEntry(null, TraceIds.of(request, response), request.getMethod(),
           path.length() > MAX_PATH ? path.substring(0, MAX_PATH) : path, status, durationMs,
-          request.getRemoteAddr(), LocalDateTime.now()));
+          request.getRemoteAddr(), LocalDateTime.now(), body));
     } catch (RuntimeException ex) {
       log.warn("Could not record request audit for {} {}: {}", request.getMethod(),
           request.getRequestURI(), ex.getMessage());

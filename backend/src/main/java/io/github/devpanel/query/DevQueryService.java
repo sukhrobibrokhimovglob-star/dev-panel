@@ -50,6 +50,8 @@ public class DevQueryService {
   /** The panel's own accounts and audit, and Liquibase's and Flyway's bookkeeping. */
   private static final Pattern PROTECTED_TABLE =
       Pattern.compile("\\b(devpanel_\\w+|databasechangelog\\w*|flyway_schema_history)\\b");
+  /** The panel's own tables hold password hashes, 2FA secrets and sessions: never readable. */
+  private static final Pattern PANEL_TABLE = Pattern.compile("\\b(devpanel_\\w+)\\b");
 
   private static final List<String> WRITE_OPERATIONS = List.of(
       "insert", "delete", "drop", "alter", "create", "truncate",
@@ -88,6 +90,8 @@ public class DevQueryService {
   private final int maxRows;
   private final int maxUpdatedRows;
   private final boolean updateEnabled;
+  private final DataSource dataSource;
+  private volatile Boolean postgres;
 
   public DevQueryService(DataSource dataSource, Duration timeout, int maxRows,
       int maxUpdatedRows, boolean updateEnabled) {
@@ -99,9 +103,27 @@ public class DevQueryService {
     this.readWrite = new TransactionTemplate(transactionManager);
     this.readWrite.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     this.statementTimeout = Math.max(1, timeout.toMillis()) + "ms";
+    this.jdbcTemplate.setQueryTimeout((int) Math.max(1, timeout.toSeconds()));
+    this.dataSource = dataSource;
     this.maxRows = maxRows;
     this.maxUpdatedRows = maxUpdatedRows;
     this.updateEnabled = updateEnabled;
+  }
+
+  /** Whether the database is PostgreSQL (asked once). */
+  boolean postgres() {
+    Boolean known = postgres;
+    if (known == null) {
+      try {
+        String product = org.springframework.jdbc.support.JdbcUtils.extractDatabaseMetaData(
+            dataSource, java.sql.DatabaseMetaData::getDatabaseProductName);
+        known = product != null && product.toLowerCase(Locale.ROOT).contains("postgres");
+      } catch (Exception e) {
+        known = Boolean.TRUE;
+      }
+      postgres = known;
+    }
+    return known;
   }
 
   public boolean isUpdateEnabled() {
@@ -146,7 +168,9 @@ public class DevQueryService {
     String statement = validateUpdate(query);
     log.info("Dev panel update: {}", statement);
     Integer updated = readWrite.execute(status -> {
-      jdbcTemplate.execute("SET LOCAL statement_timeout = '" + statementTimeout + "'");
+      if (postgres()) {
+        jdbcTemplate.execute("SET LOCAL statement_timeout = '" + statementTimeout + "'");
+      }
       int rows;
       try {
         rows = jdbcTemplate.update(statement);
@@ -189,8 +213,12 @@ public class DevQueryService {
 
   private <T> T inReadOnly(Supplier<T> work) {
     return readOnly.execute(status -> {
-      jdbcTemplate.execute("SET TRANSACTION READ ONLY");
-      jdbcTemplate.execute("SET LOCAL statement_timeout = '" + statementTimeout + "'");
+      // PostgreSQL enforces both itself; elsewhere the read-only connection and the JDBC query
+      // timeout set in the constructor apply
+      if (postgres()) {
+        jdbcTemplate.execute("SET TRANSACTION READ ONLY");
+        jdbcTemplate.execute("SET LOCAL statement_timeout = '" + statementTimeout + "'");
+      }
       try {
         return work.get();
       } catch (DataAccessException e) {
@@ -217,12 +245,25 @@ public class DevQueryService {
 
   /** @return the query without surrounding whitespace and without a single trailing {@code ;}. */
   String validate(String queryToCheck) {
+    return validateSelect(queryToCheck);
+  }
+
+  /**
+   * A single {@code SELECT}/{@code WITH} without writes, system schemas or the panel's own
+   * tables; also what the plan viewer accepts.
+   */
+  public static String validateSelect(String queryToCheck) {
     String statement = singleStatement(queryToCheck);
     String query = statement.toLowerCase(Locale.ROOT);
     if (!SELECT_START.matcher(query).find()) {
       throw DevPanelException.badRequest("Only SELECT queries are allowed");
     }
     checkCommon(query, PROHIBITED_IN_SELECT);
+    Matcher panelTable = PANEL_TABLE.matcher(query);
+    if (panelTable.find()) {
+      throw DevPanelException.badRequest("Table " + panelTable.group(1)
+          + " belongs to the dev panel and cannot be read here");
+    }
     return statement;
   }
 

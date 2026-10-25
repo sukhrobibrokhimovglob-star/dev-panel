@@ -38,6 +38,14 @@
         </div>
 
         <el-alert
+          v-if="result.source === 'memory'"
+          :title="$t('devPanel.audit.fromMemory')"
+          type="info"
+          show-icon
+          :closable="false"
+          class="mb-3"
+        />
+        <el-alert
           v-if="result.truncated"
           :title="
             $t('devPanel.audit.truncated', { count: result.entries.length })

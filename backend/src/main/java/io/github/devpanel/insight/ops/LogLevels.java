@@ -52,6 +52,20 @@ public class LogLevels {
     return views;
   }
 
+  /** The level {@code logger} really logs at (inherited from its parents), e.g. DEBUG. */
+  public String effective(String logger) {
+    String name = logger;
+    while (name != null) {
+      LoggerConfiguration configuration = loggingSystem.getLoggerConfiguration(name);
+      if (configuration != null && configuration.getEffectiveLevel() != null) {
+        return name(configuration.getEffectiveLevel());
+      }
+      int dot = name.lastIndexOf('.');
+      name = dot > 0 ? name.substring(0, dot) : "ROOT".equals(name) ? null : "ROOT";
+    }
+    return null;
+  }
+
   public void set(String logger, String level, int minutes, String by) {
     if (logger == null || logger.isBlank()) {
       throw DevPanelException.badRequest("Logger name is required");

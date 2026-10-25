@@ -120,41 +120,57 @@
       <section
         class="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.jvm.gc") }}
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.jvm.gc") }}<DevHint k="gc" /></span>
+          <DevVerdict :level="gcLevel" />
         </h3>
-        <el-table :data="jvm.gc" size="small">
-          <el-table-column prop="name" :label="$t('devPanel.jvm.gc')" />
+        <el-table :data="jvm.gc" size="small" :row-class-name="gcRowClass">
+          <el-table-column :label="$t('devPanel.jvm.gc')">
+            <template #default="{ row }">
+              {{ row.name }}
+              <el-tag v-if="isFullGc(row.name)" size="small" :type="row.count > 0 ? 'warning' : 'info'"
+                class="ml-1">{{ $t("devPanel.jvm.fullGc") }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column
             prop="count"
             :label="$t('devPanel.jvm.collections')"
             align="right"
-            width="120"
+            width="110"
           />
           <el-table-column
             :label="$t('devPanel.jvm.gcTime')"
             align="right"
-            width="120"
+            width="110"
           >
             <template #default="{ row }">{{
               formatDuration(row.timeMs)
             }}</template>
           </el-table-column>
+          <el-table-column :label="$t('devPanel.jvm.avgPause')" align="right" width="110">
+            <template #default="{ row }">{{ row.count ? `${Math.round(row.timeMs / row.count)} ms` : "—" }}</template>
+          </el-table-column>
         </el-table>
 
-        <h3 class="m-0 mb-3 mt-5 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.jvm.threadStates") }}
+        <h3 class="m-0 mb-3 mt-5 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.jvm.threadStates") }}<DevHint k="threadStates" /></span>
+          <DevVerdict :level="(jvm.threadStates?.BLOCKED ?? 0) > 0 ? 'warn' : 'ok'" />
         </h3>
         <div class="flex flex-wrap gap-2">
-          <el-tag
-            v-for="(count, state) in jvm.threadStates"
+          <el-tooltip
+            v-for="(count, state) in liveStates"
             :key="state"
-            :type="state === 'BLOCKED' && count > 0 ? 'danger' : 'info'"
-            effect="plain"
-            class="cursor-pointer"
-            @click="filter = String(state)"
-            >{{ state }}: {{ count }}</el-tag
+            :content="$t(`devPanel.hints.state.${state}`, String(state))"
+            placement="top"
           >
+            <el-tag
+              :type="state === 'BLOCKED' && count > 0 ? 'danger' : 'info'"
+              effect="plain"
+              class="cursor-pointer"
+              @click="filter = String(state)"
+              >{{ state }}: {{ count }}</el-tag
+            >
+          </el-tooltip>
         </div>
       </section>
 
@@ -232,6 +248,8 @@ import { useDevStore } from "../dev.store";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useI18n } from "vue-i18n";
 import DevLineChart from "./DevLineChart.vue";
+import DevHint from "./DevHint.vue";
+import DevVerdict from "./DevVerdict.vue";
 import {
   devErrorMessage,
   formatBytes,
@@ -288,6 +306,23 @@ const loadHistogram = async () => {
 };
 
 const jvm = ref<IDevJvm | null>(null);
+
+// "Old Generation"/"MarkSweep" — butun ilova to'xtaydigan to'liq GC
+const isFullGc = (name: string) => /old|marksweep|full/i.test(name) && !/concurrent/i.test(name);
+const gcRowClass = ({ row }: { row: { name: string; count: number } }) =>
+  isFullGc(row.name) && row.count > 0 ? "row-full-gc" : "";
+const gcLevel = computed(() => {
+  const full = (jvm.value?.gc ?? []).filter((gc) => isFullGc(gc.name))
+    .reduce((sum, gc) => sum + gc.count, 0);
+  // Ishga tushgandan beri soatiga 1 tadan ko'p to'liq GC — xotira tanqis
+  const hours = Math.max(1, (jvm.value?.uptimeMs ?? 0) / 3_600_000);
+  return full / hours > 1 ? "bad" : full > 1 ? "warn" : "ok";
+});
+// NEW va TERMINATED doim 0: Java faqat tirik oqimlarni sanaydi
+const liveStates = computed(() =>
+  Object.fromEntries(Object.entries(jvm.value?.threadStates ?? {})
+    .filter(([state]) => state !== "NEW" && state !== "TERMINATED")),
+);
 const loading = ref(false);
 const errorText = ref("");
 const dump = ref("");
@@ -419,5 +454,9 @@ onMounted(load);
 
 .dev-pre--dump {
   max-height: 600px;
+}
+
+:deep(.row-full-gc) {
+  --el-table-tr-bg-color: rgba(230, 162, 60, 0.1);
 }
 </style>

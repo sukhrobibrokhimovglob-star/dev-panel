@@ -94,6 +94,20 @@
             </div>
           </div>
         </div>
+        <!-- Shu deploydan keyin paydo bo'lgan va yo'qolgan xavflar -->
+        <div v-if="riskChanges && (riskChanges.appeared.length || riskChanges.resolved.length)"
+          class="mt-3 grid gap-4 border-t border-gray-200 pt-3 md:grid-cols-2 dark:border-gray-700">
+          <div>
+            <b class="text-sm text-orange-500">🔮 {{ $t("devPanel.deployReport.newRisks") }} ({{ riskChanges.appeared.length }})</b>
+            <div v-for="item in riskChanges.appeared.slice(0, 6)" :key="item.risk.key" class="text-xs">
+              {{ item.risk.title }}</div>
+          </div>
+          <div>
+            <b class="text-sm text-green-600">✅ {{ $t("devPanel.deployReport.resolvedRisks") }} ({{ riskChanges.resolved.length }})</b>
+            <div v-for="item in riskChanges.resolved.slice(0, 6)" :key="item.risk.key" class="text-xs">
+              {{ item.risk.title }}</div>
+          </div>
+        </div>
       </section>
 
       <!-- Hamma tekshiruvlar, soha bo'yicha -->
@@ -191,6 +205,7 @@ import {
   IDevDeployReport,
   IDevHealth,
   IDevRate,
+  IDevRiskItem,
   TDevCheckStatus,
 } from "../dev.types";
 import {
@@ -217,6 +232,7 @@ const AREA_ORDER = [
   "security",
   "jobs",
   "clock",
+  "smoke",
 ];
 const RANK: Record<TDevCheckStatus, number> = {
   UNKNOWN: 0,
@@ -225,7 +241,8 @@ const RANK: Record<TDevCheckStatus, number> = {
   CRITICAL: 3,
 };
 
-const { GET_HEALTH, GET_RATE, GET_DEPLOY_REPORT } = useDevApi();
+const { GET_HEALTH, GET_RATE, GET_DEPLOY_REPORT, GET_RISK_CHANGES } = useDevApi();
+const riskChanges = ref<{ appeared: IDevRiskItem[]; resolved: IDevRiskItem[] } | null>(null);
 const report = ref<IDevDeployReport | null>(null);
 const errorRate = (errors: number, calls: number) =>
   calls ? `${((errors / calls) * 100).toFixed(2)}%` : "—";
@@ -296,8 +313,9 @@ const load = async () => {
     rate.value = r.data;
     try {
       report.value = (await GET_DEPLOY_REPORT()).data;
+      riskChanges.value = (await GET_RISK_CHANGES(report.value.deployedAt)).data;
     } catch {
-      report.value = null;
+      report.value = report.value ?? null;
     }
     errorText.value = "";
   } catch (error) {

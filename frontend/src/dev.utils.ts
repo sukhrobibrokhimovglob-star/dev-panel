@@ -3,6 +3,8 @@ import axios from "axios";
 import moment from "moment";
 import { ElMessage } from "element-plus";
 import { translate } from "./i18n";
+import { useDevStore } from "./dev.store";
+import { useDevApi } from "./dev.api";
 
 const UNITS = ["B", "KB", "MB", "GB", "TB"];
 
@@ -156,4 +158,77 @@ export const useAutoRefresh = (load: () => unknown, seconds: number) => {
     timer = null;
   };
   return { start, stop };
+};
+
+// ---------- 0.4.0 ----------
+
+/** Deploys for chart markers, fetched once per login and shared by every chart. */
+export const useDeploys = () => {
+  const store = useDevStore();
+  const list = computed(() => store.deploys);
+  let loading = false;
+  const load = async () => {
+    if (store.deploys || loading) return;
+    loading = true;
+    try {
+      store.deploys = (await useDevApi().GET_DEPLOYS()).data.recent;
+    } catch {
+      store.deploys = [];
+    } finally {
+      loading = false;
+    }
+  };
+  return { list, load };
+};
+
+export const SEVERITY_TAG: Record<string, "danger" | "warning" | "info"> = {
+  CRITICAL: "danger",
+  WARNING: "warning",
+  INFO: "info",
+};
+
+export const formatPercent = (share: number | null | undefined, digits = 1) =>
+  share == null || share < 0 ? "—" : `${(share * 100).toFixed(digits)}%`;
+
+export const formatNumber = (value: number | null | undefined) =>
+  value == null ? "—" : Math.round(value).toLocaleString();
+
+/** A runner request as curl, for the terminal. The token is a placeholder. */
+export const toCurl = (
+  baseUrl: string,
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  body?: string | null,
+) => {
+  const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+  const parts = [`curl -X ${method} ${quote(baseUrl + path)}`];
+  Object.entries(headers).forEach(([name, value]) =>
+    parts.push(`  -H ${quote(`${name}: ${value}`)}`),
+  );
+  if (body) parts.push(`  --data-raw ${quote(body)}`);
+  return parts.join(" \\\n");
+};
+
+/** Where the application itself is served: the panel's address without /dev-panel/... */
+export const applicationBaseUrl = () => {
+  const href = window.location.href.split("#")[0].split("?")[0];
+  const index = href.lastIndexOf("/dev-panel");
+  return index >= 0 ? href.substring(0, index) : window.location.origin;
+};
+
+export const prettyJson = (text: string | null | undefined) => {
+  if (!text) return "";
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+};
+
+/** Opens a server-made HTML page (the weekly report) in a new tab. */
+export const openBlob = (blob: Blob) => {
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };

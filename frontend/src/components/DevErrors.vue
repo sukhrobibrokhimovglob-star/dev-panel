@@ -89,6 +89,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDevStore } from "../dev.store";
 import { computed, onMounted, ref } from "vue";
 import { useDevApi } from "../dev.api";
 import { IDevExceptionGroup } from "../dev.types";
@@ -99,7 +100,7 @@ const { GET_EXCEPTIONS } = useDevApi();
 const groups = ref<IDevExceptionGroup[]>([]);
 const loading = ref(false);
 const errorText = ref("");
-const search = ref("");
+const search = ref(useDevStore().takeFocus("errors")?.endpoint ?? "");
 const onlyNew = ref(false);
 const logsOf = ref<IDevExceptionGroup | null>(null);
 const logsVisible = ref(false);

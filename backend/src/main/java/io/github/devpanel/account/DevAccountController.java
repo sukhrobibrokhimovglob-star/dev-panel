@@ -4,6 +4,7 @@ import io.github.devpanel.account.DevAccountRequests.Create;
 import io.github.devpanel.account.DevAccountRequests.Credentials;
 import io.github.devpanel.account.DevAccountRequests.PasswordChange;
 import io.github.devpanel.account.DevAccountRequests.Update;
+import io.github.devpanel.audit.DevActionLog;
 import io.github.devpanel.session.DevSessions;
 import io.github.devpanel.session.DevSessions.Session;
 import io.github.devpanel.session.DevSessions.SessionView;
@@ -37,10 +38,13 @@ public class DevAccountController {
 
   private final DevAccountService accountService;
   private final DevSessions sessions;
+  private final DevActionLog actions;
 
-  public DevAccountController(DevAccountService accountService, DevSessions sessions) {
+  public DevAccountController(DevAccountService accountService, DevSessions sessions,
+      DevActionLog actions) {
     this.accountService = accountService;
     this.sessions = sessions;
+    this.actions = actions;
   }
 
   @GetMapping("/me")
@@ -80,23 +84,34 @@ public class DevAccountController {
 
   @PostMapping("/accounts")
   public ResponseEntity<Credentials> create(DevAccount actor, @RequestBody Create request) {
-    return credentials(HttpStatus.CREATED, accountService.create(actor, request));
+    Credentials created = accountService.create(actor, request);
+    actions.record(actor, "account.create", request.username(),
+        "role " + request.role() + ", access " + request.access());
+    return credentials(HttpStatus.CREATED, created);
   }
 
   @PatchMapping("/accounts/{id}")
   public DevAccount update(DevAccount actor, @PathVariable long id,
       @RequestBody(required = false) Update request) {
-    return accountService.update(actor, id, request);
+    DevAccount updated = accountService.update(actor, id, request);
+    actions.record(actor, "account.update", updated.username(), request == null ? null
+        : "role " + request.role() + ", access " + request.access() + ", enabled "
+            + request.enabled());
+    return updated;
   }
 
   @PostMapping("/accounts/{id}/reset-password")
   public ResponseEntity<Credentials> resetPassword(DevAccount actor, @PathVariable long id) {
-    return credentials(HttpStatus.OK, accountService.resetPassword(actor, id));
+    Credentials reset = accountService.resetPassword(actor, id);
+    actions.record(actor, "account.reset-password", reset.account().username(), null);
+    return credentials(HttpStatus.OK, reset);
   }
 
   @PostMapping("/accounts/{id}/reset-two-factor")
   public DevAccount resetTwoFactor(DevAccount actor, @PathVariable long id) {
-    return accountService.resetTwoFactor(actor, id);
+    DevAccount reset = accountService.resetTwoFactor(actor, id);
+    actions.record(actor, "account.reset-two-factor", reset.username(), null);
+    return reset;
   }
 
   /** A temporary password must not be stored by any cache on the way. */

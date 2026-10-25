@@ -163,7 +163,98 @@
           <el-table-column :label="$t('devPanel.database.cacheHit')" width="90" align="right">
             <template #default="{ row }">{{ (row.cacheHitRatio * 100).toFixed(0) }}%</template>
           </el-table-column>
+          <el-table-column width="100" align="center">
+            <template #default="{ row }">
+              <el-button v-if="/^\s*\(?\s*(select|with)\b/i.test(row.query)" size="small" text
+                type="primary" @click="explain(row.query)">{{ $t("devPanel.explain.button") }}</el-button>
+            </template>
+          </el-table-column>
         </el-table>
+      </el-tab-pane>
+
+      <!-- Maslahatchi: indekslar, dublikatlar, kesh, statistika, id chegarasi -->
+      <el-tab-pane :label="`💡 ${$t('devPanel.advisor.title')}`" name="advisor">
+        <div class="mb-3 flex items-center gap-2">
+          <p class="m-0 text-sm text-gray-500">{{ $t("devPanel.advisor.hint") }}</p>
+          <el-button v-if="store.canWrite" class="ml-auto" size="small" :loading="advisorLoading"
+            @click="refreshAdvisor">{{ $t("devPanel.advisor.refresh") }}</el-button>
+        </div>
+        <div v-loading="advisorLoading">
+          <template v-if="advisor">
+            <h4 class="adv-h">🔑 {{ $t("devPanel.advisor.foreignKeys") }} ({{ advisor.foreignKeys.length }})
+              <DevHint k="fkIndex" /></h4>
+            <el-table :data="advisor.foreignKeys" size="small" max-height="360">
+              <el-table-column :label="$t('devPanel.database.table')" min-width="220">
+                <template #default="{ row }"><code class="text-xs">{{ row.table }}.{{ row.columns }}</code>
+                  <div class="text-xs text-gray-500">→ {{ row.referenced }}</div></template>
+              </el-table-column>
+              <el-table-column prop="rows" :label="$t('devPanel.database.rows')" width="100" align="right" sortable />
+              <el-table-column :label="$t('devPanel.advisor.create')" min-width="320">
+                <template #default="{ row }"><SqlCopy :sql="row.createIndex" /></template>
+              </el-table-column>
+            </el-table>
+
+            <h4 class="adv-h">🔍 {{ $t("devPanel.advisor.indexes") }} ({{ advisor.indexes.length }})</h4>
+            <el-table :data="advisor.indexes" size="small" max-height="360">
+              <el-table-column :label="$t('devPanel.database.table')" min-width="200">
+                <template #default="{ row }"><code class="text-xs">{{ row.table }}.{{ row.column }}</code>
+                  <el-tag v-if="row.like" size="small" class="ml-1">LIKE</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="rows" :label="$t('devPanel.database.rows')" width="100" align="right" />
+              <el-table-column prop="seqScans" label="Seq scans" width="100" align="right" />
+              <el-table-column :label="$t('devPanel.advisor.create')" min-width="320">
+                <template #default="{ row }"><SqlCopy :sql="row.createIndex" />
+                  <el-button size="small" text type="primary" @click="explain(row.exampleSql)">{{
+                    $t("devPanel.explain.button") }}</el-button></template>
+              </el-table-column>
+            </el-table>
+
+            <h4 class="adv-h">👯 {{ $t("devPanel.advisor.duplicates") }} ({{ advisor.duplicates.length }})</h4>
+            <el-table :data="advisor.duplicates" size="small">
+              <el-table-column :label="$t('devPanel.database.table')" min-width="200">
+                <template #default="{ row }"><code class="text-xs">{{ row.table }}.{{ row.column }}</code></template>
+              </el-table-column>
+              <el-table-column :label="$t('devPanel.advisor.rowsDistinct')" width="170" align="right">
+                <template #default="{ row }"><b class="text-orange-500">{{ row.total }}</b> / {{ row.distinct }}</template>
+              </el-table-column>
+              <el-table-column :label="$t('devPanel.advisor.examples')" min-width="240">
+                <template #default="{ row }">{{ row.examples.join(", ") }}</template>
+              </el-table-column>
+            </el-table>
+
+            <h4 class="adv-h">🧊 {{ $t("devPanel.advisor.cache") }} ({{ advisor.cacheCandidates.length }})</h4>
+            <el-table :data="advisor.cacheCandidates" size="small">
+              <el-table-column prop="table" :label="$t('devPanel.database.table')" min-width="200" />
+              <el-table-column prop="rows" :label="$t('devPanel.database.rows')" width="100" align="right" />
+              <el-table-column prop="readsPerDay" :label="$t('devPanel.advisor.readsPerDay')" width="140" align="right" />
+              <el-table-column prop="writesPerDay" :label="$t('devPanel.advisor.writesPerDay')" width="140" align="right" />
+            </el-table>
+
+            <h4 class="adv-h">📊 {{ $t("devPanel.advisor.statistics") }} ({{ advisor.statistics.length }})</h4>
+            <el-table :data="advisor.statistics" size="small">
+              <el-table-column prop="table" :label="$t('devPanel.database.table')" min-width="200" />
+              <el-table-column prop="rows" :label="$t('devPanel.database.rows')" width="100" align="right" />
+              <el-table-column :label="$t('devPanel.advisor.lastAnalyzed')" width="170">
+                <template #default="{ row }">{{ row.lastAnalyzed ? fromNow(row.lastAnalyzed) : $t("devPanel.advisor.never") }}</template>
+              </el-table-column>
+              <el-table-column :label="$t('devPanel.advisor.create')" min-width="220">
+                <template #default="{ row }"><SqlCopy :sql="`ANALYZE ${row.schema}.${row.table};`" /></template>
+              </el-table-column>
+            </el-table>
+
+            <h4 class="adv-h">🔢 {{ $t("devPanel.advisor.ids") }}</h4>
+            <el-table :data="advisor.ids.slice(0, 15)" size="small">
+              <el-table-column :label="$t('devPanel.advisor.sequence')" min-width="240">
+                <template #default="{ row }"><code class="text-xs">{{ row.sequence }}</code>
+                  <span v-if="row.table" class="text-xs text-gray-500"> → {{ row.table }}.{{ row.column }} ({{ row.columnType }})</span></template>
+              </el-table-column>
+              <el-table-column :label="$t('devPanel.advisor.used')" min-width="200">
+                <template #default="{ row }"><el-progress :percentage="Math.min(100, Math.round(row.used * 1000) / 10)"
+                  :status="row.used >= 0.8 ? 'exception' : row.used >= 0.5 ? 'warning' : 'success'" /></template>
+              </el-table-column>
+            </el-table>
+          </template>
+        </div>
       </el-tab-pane>
 
       <!-- Jadvallar -->
@@ -186,9 +277,15 @@
             <template #default="{ row }">{{ formatBytes(row.totalBytes) }}</template>
           </el-table-column>
           <el-table-column prop="liveRows" :label="$t('devPanel.database.rows')" width="110" align="right" sortable />
-          <el-table-column prop="deadRows" :label="$t('devPanel.database.deadRows')" width="110" align="right" sortable />
-          <el-table-column prop="seqScans" label="Seq scans" width="100" align="right" sortable />
-          <el-table-column prop="indexScans" label="Index scans" width="110" align="right" sortable />
+          <el-table-column prop="deadRows" width="120" align="right" sortable>
+            <template #header>{{ $t("devPanel.database.deadRows") }}<DevHint k="deadRows" /></template>
+          </el-table-column>
+          <el-table-column prop="seqScans" width="115" align="right" sortable>
+            <template #header>Seq scans<DevHint k="seqScans" /></template>
+          </el-table-column>
+          <el-table-column prop="indexScans" width="125" align="right" sortable>
+            <template #header>Index scans<DevHint k="indexScans" /></template>
+          </el-table-column>
           <el-table-column :label="$t('devPanel.database.vacuumed')" width="140">
             <template #default="{ row }">{{ fromNow(row.lastVacuum) }}</template>
           </el-table-column>
@@ -235,16 +332,21 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+    <DevExplain v-model="explainVisible" :request="explainRequest" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref } from "vue";
+import { ElButton, ElMessage, ElMessageBox } from "element-plus";
+import DevExplain from "./DevExplain.vue";
+import DevHint from "./DevHint.vue";
 import { useI18n } from "vue-i18n";
 import { useDevApi } from "../dev.api";
 import { useDevStore } from "../dev.store";
 import {
+  IDevAdvisor,
+  IDevExplainReq,
   IDevDbActivity,
   IDevDbOverview,
   IDevDbStatement,
@@ -253,6 +355,7 @@ import {
   IDevUnusedIndex,
 } from "../dev.types";
 import {
+  copyToClipboard,
   devErrorMessage,
   formatBytes,
   formatMs,
@@ -273,6 +376,37 @@ const tables = ref<IDevDbTable[]>([]);
 const unused = ref<IDevUnusedIndex[]>([]);
 const leaks = ref<IDevLeak[]>([]);
 const hideIdle = ref(true);
+const advisor = ref<IDevAdvisor | null>(null);
+const advisorLoading = ref(false);
+const explainVisible = ref(false);
+const explainRequest = ref<IDevExplainReq | null>(null);
+
+const explain = (sql: string) => {
+  explainRequest.value = { sql };
+  explainVisible.value = true;
+};
+
+const refreshAdvisor = async () => {
+  advisorLoading.value = true;
+  try {
+    advisor.value = (await api.REFRESH_ADVISOR()).data;
+  } catch (error) {
+    errorText.value = await devErrorMessage(error);
+  } finally {
+    advisorLoading.value = false;
+  }
+};
+
+// SQL va nusxa tugmasi bir qatorda
+const SqlCopy = defineComponent({
+  props: { sql: { type: String, required: true } },
+  setup: (props) => () =>
+    h("div", { class: "adv-sql" }, [
+      h("code", props.sql),
+      h(ElButton, { size: "small", text: true, onClick: () => copyToClipboard(props.sql) },
+        () => t("devPanel.waterfall.copy")),
+    ]),
+});
 const errorText = ref("");
 
 const canStop = computed(
@@ -323,6 +457,16 @@ const load = async () => {
       case "leaks":
         leaks.value = (await api.GET_DB_LEAKS()).data;
         break;
+      case "advisor":
+        if (!advisor.value) {
+          advisorLoading.value = true;
+          try {
+            advisor.value = (await api.GET_ADVISOR()).data;
+          } finally {
+            advisorLoading.value = false;
+          }
+        }
+        break;
     }
     errorText.value = "";
   } catch (error) {
@@ -366,6 +510,24 @@ onBeforeUnmount(refresh.stop);
 </script>
 
 <style scoped>
+.adv-h {
+  margin: 18px 0 8px;
+  font-size: 14px;
+}
+
+.adv-sql {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-sql code {
+  flex: 1;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .dev-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));

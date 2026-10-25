@@ -80,6 +80,7 @@ public class InsightController {
   private final ObjectProvider<TomcatCapacity> tomcat;
   private final ObjectProvider<DependencyChecks> dependencies;
   private final HeapHistogram histogram = new HeapHistogram();
+  private final io.github.devpanel.audit.DevActionLog actions;
 
   @SuppressWarnings("checkstyle:ParameterNumber")
   public InsightController(HealthService health, AlertEngine alerts, ClockCheck clock,
@@ -90,7 +91,9 @@ public class InsightController {
       ObjectProvider<JobStats> jobs, ObjectProvider<LogLevels> logLevels, TraceStore traces,
       UsageStats usage, EndpointCatalog catalog, SecurityStats security,
       DeployReport deployReport, ObjectProvider<TomcatCapacity> tomcat,
-      ObjectProvider<DependencyChecks> dependencies) {
+      ObjectProvider<DependencyChecks> dependencies,
+      io.github.devpanel.audit.DevActionLog actions) {
+    this.actions = actions;
     this.health = health;
     this.alerts = alerts;
     this.clock = clock;
@@ -191,7 +194,8 @@ public class InsightController {
   }
 
   @PostMapping("/alerts/test")
-  public Map<String, Object> testAlert() {
+  public Map<String, Object> testAlert(DevAccount actor) {
+    actions.record(actor, "alerts.test", null, null);
     try {
       alerts.sendTest();
       return Map.of("sent", true);
@@ -215,6 +219,7 @@ public class InsightController {
   @PostMapping("/memory/histogram")
   public List<HeapHistogram.Row> histogram(DevAccount actor) {
     requireAdmin(actor);
+    actions.record(actor, "jvm.heap-histogram", null, null);
     return histogram.top();
   }
 
@@ -306,7 +311,9 @@ public class InsightController {
     if (!"cancel".equals(mode) && !"terminate".equals(mode)) {
       throw DevPanelException.badRequest("mode is cancel or terminate");
     }
-    return Map.of("done", database.stop(pid, "terminate".equals(mode)));
+    boolean done = database.stop(pid, "terminate".equals(mode));
+    actions.record(actor, "database." + mode, String.valueOf(pid), done ? "done" : "not done");
+    return Map.of("done", done);
   }
 
   // ---------- integrations, jobs ----------
@@ -348,12 +355,15 @@ public class InsightController {
     Object minutes = body.get("minutes");
     requireLogLevels().set((String) body.get("logger"), (String) body.get("level"),
         minutes instanceof Number number ? number.intValue() : 30, actor.username());
+    actions.record(actor, "logging.set", (String) body.get("logger"), body.get("level") + " for "
+        + (minutes instanceof Number number ? number.intValue() : 30) + " min");
     return Map.of("ok", true);
   }
 
   @DeleteMapping("/logging/levels/{logger}")
-  public Map<String, Object> resetLevel(@PathVariable String logger) {
+  public Map<String, Object> resetLevel(DevAccount actor, @PathVariable String logger) {
     requireLogLevels().reset(logger);
+    actions.record(actor, "logging.reset", logger, null);
     return Map.of("ok", true);
   }
 
@@ -363,6 +373,7 @@ public class InsightController {
   public Map<String, Object> config(DevAccount actor,
       @RequestParam(required = false) String filter) {
     requireAdmin(actor);
+    actions.record(actor, "config.view", filter, null);
     return Map.of("profiles", config.activeProfiles(), "properties", config.list(filter));
   }
 

@@ -2,12 +2,18 @@ package io.github.devpanel.insight.requests;
 
 import io.github.devpanel.insight.logs.ExceptionGroups;
 import io.github.devpanel.insight.security.SecurityStats;
+import io.github.devpanel.audit.DevRequestAuditFilter;
+import io.github.devpanel.insight.trace.CapturingRequest;
 import io.github.devpanel.insight.trace.CountingResponse;
 import io.github.devpanel.insight.trace.RequestRecorder;
+import io.github.devpanel.insight.trace.RunnerMarker;
 import io.github.devpanel.insight.trace.TraceStore;
 import io.github.devpanel.insight.trace.TraceStore.Trace;
+import io.github.devpanel.insight.trace.TraceStore.RequestInfo;
 import io.github.devpanel.insight.usage.UsageStats;
+import io.github.devpanel.support.Sensitive;
 import io.github.devpanel.support.TraceIds;
+import io.github.devpanel.testing.TestHits;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
@@ -41,11 +47,13 @@ public class RequestInsightFilter extends OncePerRequestFilter {
   private final TraceStore traces;
   private final String basePath;
   private final boolean trustForwardedFor;
+  private final Sensitive sensitive;
   private final Map<String, Long> lastSample = new ConcurrentHashMap<>();
 
   public RequestInsightFilter(RequestStats stats, ExceptionGroups exceptionGroups,
       UsageStats usage, SecurityStats security, TraceStore traces, String basePath,
-      boolean trustForwardedFor) {
+      boolean trustForwardedFor, Sensitive sensitive) {
+    this.sensitive = sensitive;
     this.stats = stats;
     this.exceptionGroups = exceptionGroups;
     this.usage = usage;
@@ -66,24 +74,26 @@ public class RequestInsightFilter extends OncePerRequestFilter {
       FilterChain chain) throws ServletException, IOException {
     long start = System.currentTimeMillis();
     RequestRecorder recorder = RequestRecorder.start();
+    TestHits.enter(request);
+    CapturingRequest capturing = new CapturingRequest(request);
     CountingResponse counting = new CountingResponse(response);
     Throwable failure = null;
     try {
-      chain.doFilter(request, counting);
+      chain.doFilter(capturing, counting);
     } catch (IOException | ServletException | RuntimeException e) {
       failure = e;
       throw e;
     } finally {
       RequestRecorder.stop();
       try {
-        finish(request, response, counting, recorder, start, failure);
+        finish(capturing, response, counting, recorder, start, failure);
       } catch (RuntimeException ignored) {
         // Statistics must never break a response
       }
     }
   }
 
-  private void finish(HttpServletRequest request, HttpServletResponse response,
+  private void finish(CapturingRequest request, HttpServletResponse response,
       CountingResponse counting, RequestRecorder recorder, long start, Throwable failure) {
     long now = System.currentTimeMillis();
     long ms = now - start;
@@ -104,16 +114,31 @@ public class RequestInsightFilter extends OncePerRequestFilter {
       exceptionGroups.record(failure != null ? failure : handled, traceId);
     }
 
-    String reason = status >= 500 ? "ERROR"
+    String responseText = status >= 400 ? sensitive.mask(counting.capturedText()) : null;
+    if (responseText != null) {
+      request.setAttribute(DevRequestAuditFilter.RESPONSE_BODY_ATTRIBUTE, responseText);
+    }
+    TestHits.record(request, endpoint, status);
+
+    boolean runner = RunnerMarker.matches(request.getHeader(RunnerMarker.HEADER));
+    String reason = runner ? "RUNNER"
+        : status >= 500 ? "ERROR"
         : stats.isNPlusOne(recorder.wastedQueries()) ? "N_PLUS_ONE"
         : ms >= stats.slowThresholdMs() ? "SLOW"
+        // 4xx answered by a controller (a refused login or an unknown URL is not kept)
+        : status >= 400 && !endpoint.contains(" (") ? "ERROR"
         : sampleDue(endpoint, now) ? "SAMPLE" : null;
     if (reason != null) {
+      String body = request.capturedBody();
+      RequestInfo info = new RequestInfo(request.getMethod(), request.getQueryString(),
+          request.getContentType(), request.replayableHeaders(),
+          body == null ? null : sensitive.maskSecretsOnly(body), request.hadAuthorization());
       traces.add(new Trace(traceId != null ? traceId : UUID.randomUUID().toString(),
           Instant.ofEpochMilli(start), endpoint, path, status, ms, recorder.sqlMs(),
           recorder.externalMs(), recorder.sqlCount(), recorder.rows(), bytes, recorder.user(),
           recorder.tenant(), ip, reason, recorder.truncated(), recorder.spans(),
-          recorder.repeated()));
+          recorder.repeated(), info, responseText, recorder.writeRepeats(),
+          recorder.exactRepeats(), recorder.sequenceCalls(), recorder.externalInTransaction()));
     }
   }
 

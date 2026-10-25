@@ -42,7 +42,13 @@
             sortable
           >
             <template #default="{ row }"
-              ><code class="text-xs">{{ row.stats.endpoint }}</code></template
+              ><code class="text-xs">{{ row.stats.endpoint }}</code>
+              <span class="api-actions">
+                <el-button size="small" text type="primary" :title="$t('devPanel.tabs.runner')"
+                  @click="openIn('runner', row.stats.endpoint)">▶</el-button>
+                <el-button v-if="store.canManageAccounts" size="small" text :title="$t('devPanel.slo.add')"
+                  @click="openIn('slo', row.stats.endpoint)">🎯</el-button>
+              </span></template
             >
           </el-table-column>
           <el-table-column
@@ -84,11 +90,11 @@
           </el-table-column>
           <el-table-column
             prop="stats.p95Ms"
-            label="p95"
-            width="90"
+            width="95"
             align="right"
             sortable
           >
+            <template #header>p95<DevHint k="p95" /></template>
             <template #default="{ row }"
               ><b>{{ formatMs(row.stats.p95Ms) }}</b></template
             >
@@ -145,10 +151,22 @@
                     }}</el-tag
                   >
                 </span>
+                <span v-if="usual[row.stats.endpoint]?.samples >= 3">
+                  {{ $t("devPanel.api.usual") }}:
+                  {{ formatMs(usual[row.stats.endpoint].p95Ms) }}
+                  <el-tag
+                    v-if="slower(row.stats.p95LastHourMs, usual[row.stats.endpoint].p95Ms)"
+                    type="warning"
+                    size="small"
+                    effect="plain"
+                    >×{{ ratio(row.stats.p95LastHourMs, usual[row.stats.endpoint].p95Ms) }}</el-tag
+                  >
+                </span>
                 <span
                   v-if="
                     row.p95BeforeDeployMs == null &&
-                    row.p95SameHourYesterdayMs == null
+                    row.p95SameHourYesterdayMs == null &&
+                    !(usual[row.stats.endpoint]?.samples >= 3)
                   "
                   class="text-gray-400"
                   >—</span
@@ -156,7 +174,8 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('devPanel.api.timeSplit')" min-width="150">
+          <el-table-column min-width="150">
+            <template #header>{{ $t("devPanel.api.timeSplit") }}<DevHint k="timeSplit" /></template>
             <template #default="{ row }">
               <div class="split" :title="splitTitle(row.stats)">
                 <i class="db" :style="{ flex: row.stats.avgDbMs }" />
@@ -183,6 +202,14 @@
                   >/ {{ row.stats.sqlMax }}</small
                 ></span
               >
+              <div class="flex justify-end gap-1">
+                <el-tooltip v-if="row.stats.writeRepeatsPerCall >= 5" :content="$t('devPanel.api.batchHint')">
+                  <el-tag size="small" type="info">⇉</el-tag></el-tooltip>
+                <el-tooltip v-if="row.stats.exactRepeatsPerCall >= 3" :content="$t('devPanel.api.sameRowHint')">
+                  <el-tag size="small" type="warning">♻</el-tag></el-tooltip>
+                <el-tooltip v-if="row.stats.externalInTransaction > 0" :content="$t('devPanel.api.externalInTxHint')">
+                  <el-tag size="small" type="danger">⛓</el-tag></el-tooltip>
+              </div>
             </template>
           </el-table-column>
           <el-table-column
@@ -357,8 +384,17 @@ import {
 } from "../dev.utils";
 import DevTraceLogs from "./DevTraceLogs.vue";
 import DevWaterfall from "./DevWaterfall.vue";
+import DevHint from "./DevHint.vue";
+import { useDevStore } from "../dev.store";
+import { IDevUsual } from "../dev.types";
 
-const { GET_ENDPOINTS, GET_SLOW, GET_N_PLUS_ONE, GET_TRACES } = useDevApi();
+const { GET_ENDPOINTS, GET_SLOW, GET_N_PLUS_ONE, GET_TRACES, GET_USUAL } = useDevApi();
+const store = useDevStore();
+// Shu soatdagi odatiy p95 (oldingi kunlar medianasi)
+const usual = ref<Record<string, IDevUsual>>({});
+const openIn = (tab: string, endpoint: string) => {
+  store.focus = { tab, endpoint };
+};
 const traces = ref<IDevTraceSummary[]>([]);
 const traceId = ref<string | null>(null);
 const traceVisible = ref(false);
@@ -414,6 +450,11 @@ const load = async () => {
     slow.value = s.data;
     nPlusOne.value = n.data;
     traces.value = t.data;
+    try {
+      usual.value = (await GET_USUAL()).data;
+    } catch {
+      usual.value = {};
+    }
     errorText.value = "";
   } catch (error) {
     errorText.value = await devErrorMessage(error);
@@ -424,6 +465,10 @@ const load = async () => {
 
 const refresh = useAutoRefresh(load, 60);
 onMounted(() => {
+  // Qidiruvdan kelgan bo'lsa: endpoint bo'yicha filtr yoki so'rovning waterfall'i
+  const asked = store.takeFocus("api");
+  if (asked?.endpoint) search.value = asked.endpoint;
+  if (asked?.traceId) openTrace(asked.traceId);
   load();
   refresh.start();
 });
@@ -449,5 +494,13 @@ onBeforeUnmount(refresh.stop);
 
 .split .code {
   background: #7c5cff;
+}
+.api-actions {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+:deep(.el-table__row:hover) .api-actions {
+  opacity: 1;
 }
 </style>

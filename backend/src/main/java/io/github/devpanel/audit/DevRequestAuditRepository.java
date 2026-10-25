@@ -21,9 +21,11 @@ public class DevRequestAuditRepository {
 
   public void insert(AuditEntry entry) {
     jdbcTemplate.update("INSERT INTO devpanel_request_audit (trace_id, http_method, path,"
-            + " status_code, duration_ms, client_ip, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            + " status_code, duration_ms, client_ip, occurred_at, response_body)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         entry.traceId(), entry.httpMethod(), entry.path(), entry.statusCode(),
-        entry.durationMs(), entry.clientIp(), Timestamp.valueOf(entry.occurredAt()));
+        entry.durationMs(), entry.clientIp(), Timestamp.valueOf(entry.occurredAt()),
+        entry.responseBody());
   }
 
   public int deleteOlderThan(LocalDateTime before) {
@@ -69,12 +71,13 @@ public class DevRequestAuditRepository {
     pageArgs.add(resolvedSize);
     pageArgs.add((long) resolvedPage * resolvedSize);
     List<AuditEntry> list = jdbcTemplate.query("SELECT id, trace_id, http_method, path,"
-            + " status_code, duration_ms, client_ip, occurred_at FROM devpanel_request_audit"
+            + " status_code, duration_ms, client_ip, occurred_at, response_body"
+            + " FROM devpanel_request_audit"
             + where + " ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?",
         (rs, rowNum) -> new AuditEntry(rs.getLong("id"), rs.getString("trace_id"),
             rs.getString("http_method"), rs.getString("path"), rs.getInt("status_code"),
             rs.getLong("duration_ms"), rs.getString("client_ip"),
-            rs.getTimestamp("occurred_at").toLocalDateTime()),
+            rs.getTimestamp("occurred_at").toLocalDateTime(), rs.getString("response_body")),
         pageArgs.toArray());
     return new Page(list, total == null ? 0 : total);
   }
@@ -83,9 +86,10 @@ public class DevRequestAuditRepository {
     return value != null && !value.isBlank();
   }
 
+  /** {@code responseBody}: the start of what the error response said, sensitive data masked. */
   public record AuditEntry(Long id, String traceId, String httpMethod, String path,
                            int statusCode, long durationMs, String clientIp,
-                           LocalDateTime occurredAt) {
+                           LocalDateTime occurredAt, String responseBody) {
   }
 
   public record Filter(String traceId, String httpMethod, String path, Integer statusCode,

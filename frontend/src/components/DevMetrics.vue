@@ -22,7 +22,7 @@
       <div
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">CPU</h3>
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white"><span>CPU<DevHint k="cpu" /></span><DevVerdict :level="cpuLevel" /></h3>
         <p class="m-0 mb-3 text-sm text-gray-500 dark:text-gray-400">
           {{ $t("devPanel.metrics.processors") }}:
           <b>{{ metrics.cpu.availableProcessors }}</b>
@@ -54,8 +54,9 @@
       <div
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.metrics.memory") }}
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.metrics.memory") }}<DevHint k="heap" /></span>
+          <DevVerdict :level="heapLevel" />
         </h3>
         <div class="mb-1 flex justify-between text-sm dark:text-gray-300">
           <span>{{ $t("devPanel.metrics.heap") }}</span>
@@ -91,8 +92,9 @@
       <div
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.metrics.disks") }}
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.metrics.disks") }}<DevHint k="disk" /></span>
+          <DevVerdict :level="diskLevel" />
         </h3>
         <div
           v-for="disk in metrics.disks"
@@ -122,8 +124,9 @@
       <div
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700 md:col-span-2"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.metrics.hikari") }}
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.metrics.hikari") }}<DevHint k="pool" /></span>
+          <DevVerdict :level="poolLevel" />
         </h3>
         <div
           v-for="pool in metrics.hikari"
@@ -149,7 +152,7 @@
               ><b>{{ pool.idle }}</b>
             </div>
             <div :class="{ 'is-danger': pool.pending > 0 }">
-              <span>{{ $t("devPanel.metrics.pending") }}</span
+              <span>{{ $t("devPanel.metrics.pending") }}<DevHint k="pending" /></span
               ><b>{{ pool.pending }}</b>
             </div>
             <div>
@@ -173,8 +176,9 @@
         v-if="tomcat"
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.metrics.capacity") }}
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.metrics.capacity") }}<DevHint k="tomcat" /></span>
+          <DevVerdict :level="tomcatLevel" />
         </h3>
         <div class="mb-1 flex justify-between text-sm dark:text-gray-300">
           <span>{{ $t("devPanel.metrics.requestThreads") }}</span>
@@ -199,8 +203,9 @@
       <div
         class="dev-metric rounded-xl border border-gray-200 p-4 dark:border-gray-700"
       >
-        <h3 class="m-0 mb-3 text-base font-semibold dark:text-white">
-          {{ $t("devPanel.metrics.threads") }}
+        <h3 class="m-0 mb-3 flex items-center justify-between gap-2 text-base font-semibold dark:text-white">
+          <span>{{ $t("devPanel.metrics.threads") }}<DevHint k="threadCount" /></span>
+          <DevVerdict :level="metrics.threads.deadlocked > 0 ? 'bad' : 'ok'" />
         </h3>
         <div class="dev-stats">
           <div>
@@ -355,6 +360,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useDevApi } from "../dev.api";
 import { IDevMetrics, IDevMetricsHistory, IDevTomcat } from "../dev.types";
 import DevLineChart from "./DevLineChart.vue";
+import DevHint from "./DevHint.vue";
+import DevVerdict from "./DevVerdict.vue";
 import {
   devErrorMessage,
   formatBytes,
@@ -392,6 +399,35 @@ const systemUsed = computed(() =>
   metrics.value
     ? metrics.value.memory.systemTotal - metrics.value.memory.systemFree
     : 0,
+);
+
+// Kartochka xulosasi: 75% dan sariq, 90% dan qizil (pool: kutayotgan bo'lsa qizil)
+type TLevel = "ok" | "warn" | "bad" | "unknown";
+const level = (share: number): TLevel =>
+  share < 0 ? "unknown" : share >= 0.9 ? "bad" : share >= 0.75 ? "warn" : "ok";
+const cpuLevel = computed<TLevel>(() =>
+  metrics.value ? level(Math.max(metrics.value.cpu.processLoad, metrics.value.cpu.systemLoad * 0.95))
+    : "unknown",
+);
+const heapLevel = computed<TLevel>(() =>
+  metrics.value && metrics.value.memory.heapMax > 0
+    ? level(metrics.value.memory.heapUsed / metrics.value.memory.heapMax * 0.9) : "unknown",
+);
+const diskLevel = computed<TLevel>(() =>
+  metrics.value?.disks?.length
+    ? level(Math.max(...metrics.value.disks.map((d) =>
+      d.totalSpace > 0 ? (d.totalSpace - d.usableSpace) / d.totalSpace : 0)))
+    : "unknown",
+);
+const poolLevel = computed<TLevel>(() => {
+  const pools = metrics.value?.hikari ?? [];
+  if (!pools.length) return "unknown";
+  if (pools.some((p) => p.pending > 0)) return "bad";
+  return level(Math.max(...pools.map((p) => (p.max ? p.active / p.max : 0))));
+});
+const tomcatLevel = computed<TLevel>(() =>
+  !tomcat.value || tomcat.value.maxThreads <= 0 ? "unknown"
+    : tomcat.value.queued > 0 ? "bad" : level(tomcat.value.busyThreads / tomcat.value.maxThreads),
 );
 
 const colorFor = (percentage: number) =>

@@ -59,6 +59,11 @@ public class HealthService {
   private final SecurityStats security;
   private final DependencyChecks dependencies;
   private final Instant started = Instant.now();
+  private volatile io.github.devpanel.insight.smoke.SmokeChecks smokeChecks;
+
+  public void useSmokeChecks(io.github.devpanel.insight.smoke.SmokeChecks checks) {
+    this.smokeChecks = checks;
+  }
 
   /** Any of the optional insights may be null when the application lacks the library. */
   public HealthService(DevMetricsService metrics, DevMetricsHistory history, MemoryWatch memory,
@@ -96,6 +101,8 @@ public class HealthService {
     run(checks, "api", this::errorRate);
     run(checks, "api", this::latency);
     run(checks, "api", this::nPlusOne);
+    run(checks, "api", this::traffic);
+    run(checks, "smoke", this::smoke);
     run(checks, "errors", this::newExceptions);
     run(checks, "external", this::external);
     run(checks, "jobs", this::jobs);
@@ -402,6 +409,7 @@ public class HealthService {
 
   private List<Check> latency(long now) {
     Map<String, long[]> yesterday = endpointHistory.sameHourYesterday();
+    Map<String, EndpointHistory.Usual> usual = endpointHistory.usualThisHour();
     Map<String, Long> beforeDeploy = Duration.between(started, Instant.now()).toHours() < 24
         ? endpointHistory.p95BeforeDeploy(started) : Map.of();
     List<String> slower = new ArrayList<>();
@@ -411,11 +419,15 @@ public class HealthService {
       }
       long[] before = yesterday.get(view.endpoint());
       Long deployBaseline = beforeDeploy.get(view.endpoint());
+      EndpointHistory.Usual normal = usual.get(view.endpoint());
+      boolean usualKnown = normal != null && normal.samples() >= 3 && normal.calls() >= 20;
       long baseline = deployBaseline != null ? deployBaseline
+          : usualKnown ? normal.p95Ms()
           : before != null && before[1] >= 20 ? before[0] : -1;
       if (baseline > 0 && view.p95Ms() >= baseline * 2 && view.p95Ms() - baseline >= 300) {
         slower.add(view.endpoint() + ": p95 " + baseline + " → " + view.p95Ms() + " ms"
-            + (deployBaseline != null ? " (since this deploy)" : " (vs yesterday)"));
+            + (deployBaseline != null ? " (since this deploy)"
+                : usualKnown ? " (usual at this hour)" : " (vs yesterday)"));
       }
     }
     if (!slower.isEmpty()) {
@@ -425,6 +437,48 @@ public class HealthService {
     }
     return List.of(new Check("api.latency", "api", Status.OK, "Response times are normal", null,
         "api"));
+  }
+
+  /** Much less traffic than usual at this hour: clients may not reach the server. */
+  private List<Check> traffic(long now) {
+    Map<String, EndpointHistory.Usual> usual = endpointHistory.usualThisHour();
+    long usualPerHour = 0;
+    int samples = 0;
+    for (EndpointHistory.Usual normal : usual.values()) {
+      usualPerHour += normal.calls();
+      samples = Math.max(samples, normal.samples());
+    }
+    if (samples < 3 || usualPerHour < 120
+        || Duration.between(started, Instant.now()).toMinutes() < 30) {
+      return List.of();
+    }
+    long lastHalfHour = requests.requestsInLast(now, 30);
+    double expected = usualPerHour / 2.0;
+    if (lastHalfHour < expected * 0.3) {
+      return List.of(new Check("api.traffic", "api", Status.WARNING,
+          "Much less traffic than usual",
+          lastHalfHour + " requests in the last 30 min; usually about " + Math.round(expected)
+              + " at this hour. Are clients reaching the server (network, proxy, the frontend)?",
+          "api"));
+    }
+    return List.of();
+  }
+
+  private List<Check> smoke(long now) {
+    io.github.devpanel.insight.smoke.SmokeChecks checks = smokeChecks;
+    if (checks == null) {
+      return List.of();
+    }
+    List<Check> result = new ArrayList<>();
+    for (io.github.devpanel.insight.smoke.SmokeChecks.CheckView view : checks.list()) {
+      if (view.check().enabled() && view.lastRun() != null && !view.lastRun().ok()) {
+        result.add(new Check("smoke." + view.check().id(), "smoke", Status.CRITICAL,
+            "Smoke check failed: " + view.check().name(),
+            view.check().method() + " " + view.check().path() + " → " + view.lastRun().error(),
+            "smoke"));
+      }
+    }
+    return result;
   }
 
   private List<Check> nPlusOne(long now) {

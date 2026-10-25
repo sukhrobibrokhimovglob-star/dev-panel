@@ -125,6 +125,20 @@ public class RequestStats {
     return views;
   }
 
+  /** The latency histogram of one endpoint in one hour, serialized; null when not called. */
+  synchronized String histogram(long hour, String endpoint) {
+    Map<String, Bucket> endpoints = hours.get(hour);
+    Bucket bucket = endpoints == null ? null : endpoints.get(endpoint);
+    return bucket == null ? null : bucket.latency.serialize();
+  }
+
+  /** Calls of {@code endpoint} answered within {@code targetMs} over the last hours in memory. */
+  public synchronized long[] withinTarget(String endpoint, long targetMs, long now, int lastHours) {
+    Bucket bucket = merge(now, lastHours).get(endpoint);
+    return bucket == null ? new long[] {0, 0}
+        : new long[] {bucket.latency.countAtMost(targetMs), bucket.latency.count()};
+  }
+
   public synchronized List<SlowRequest> slowRequests() {
     return new ArrayList<>(slow);
   }
@@ -176,6 +190,10 @@ public class RequestStats {
     long bytesTotal;
     long bytesMax;
     long wastedTotal;
+    long writeRepeatsTotal;
+    long exactRepeatsTotal;
+    long sequenceCallsTotal;
+    long externalInTransaction;
 
     void add(int status, long ms, RequestRecorder recorder, long bytes, int wasted) {
       latency.record(ms);
@@ -193,6 +211,10 @@ public class RequestStats {
       bytesTotal += bytes;
       bytesMax = Math.max(bytesMax, bytes);
       wastedTotal += wasted;
+      writeRepeatsTotal += recorder.writeRepeats();
+      exactRepeatsTotal += recorder.exactRepeats();
+      sequenceCallsTotal += recorder.sequenceCalls();
+      externalInTransaction += recorder.externalInTransaction();
     }
 
     void merge(Bucket other) {
@@ -208,6 +230,10 @@ public class RequestStats {
       bytesTotal += other.bytesTotal;
       bytesMax = Math.max(bytesMax, other.bytesMax);
       wastedTotal += other.wastedTotal;
+      writeRepeatsTotal += other.writeRepeatsTotal;
+      exactRepeatsTotal += other.exactRepeatsTotal;
+      sequenceCallsTotal += other.sequenceCallsTotal;
+      externalInTransaction += other.externalInTransaction;
     }
 
     EndpointView view(String endpoint, long p95LastHour) {
@@ -221,20 +247,26 @@ public class RequestStats {
           latency.percentileMs(99), latency.maxMs(), p95LastHour,
           calls == 0 ? 0 : (double) sqlTotal / calls, sqlMax, avgDb, avgExternal, avgCode,
           Math.round(rowsTotal * perCall), rowsMax, Math.round(bytesTotal * perCall), bytesMax,
-          calls == 0 ? 0 : (double) wastedTotal / calls);
+          calls == 0 ? 0 : (double) wastedTotal / calls, writeRepeatsTotal * perCall,
+          exactRepeatsTotal * perCall, sequenceCallsTotal * perCall, externalInTransaction);
     }
   }
 
   /**
    * Times in ms. {@code avgDbMs}/{@code avgExternalMs}/{@code avgCodeMs} split the average time;
    * code is what is left (the application's own work, serialization, waiting for a connection).
-   * {@code wastedPerCall}: repeated SQL per call (N+1).
+   * {@code wastedPerCall}: repeated lookups per call (N+1); {@code writeRepeatsPerCall}: repeated
+   * inserts/updates/deletes per call (batching would save them); {@code exactRepeatsPerCall}:
+   * lookups repeated with the very same parameters; {@code sequenceCallsPerCall}: ids fetched one
+   * at a time; {@code externalInTransaction}: external calls made while holding a transaction.
    */
   public record EndpointView(String endpoint, long calls, long serverErrors, long clientErrors,
                              long avgMs, long p50Ms, long p95Ms, long p99Ms, long maxMs,
                              long p95LastHourMs, double sqlPerCall, long sqlMax, long avgDbMs,
                              long avgExternalMs, long avgCodeMs, long avgRows, long maxRows,
-                             long avgBytes, long maxBytes, double wastedPerCall) {
+                             long avgBytes, long maxBytes, double wastedPerCall,
+                             double writeRepeatsPerCall, double exactRepeatsPerCall,
+                             double sequenceCallsPerCall, long externalInTransaction) {
   }
 
   public record SlowRequest(Instant time, String endpoint, int status, long ms, int sql,

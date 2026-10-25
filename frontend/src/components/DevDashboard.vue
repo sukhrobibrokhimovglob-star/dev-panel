@@ -221,6 +221,15 @@
             <!-- v-if: menyu almashganda bo'lim qayta yaratilib, ma'lumot yangidan olinadi;
                logs/docs bir komponent, shuning uchun key bilan ajratilgan -->
             <DevHealth v-if="activeTab === 'health'" @open="selectTab" />
+            <DevRisks v-else-if="activeTab === 'risks'" @open="selectTab" />
+            <DevSlo v-else-if="activeTab === 'slo'" />
+            <DevSmoke v-else-if="activeTab === 'smoke'" />
+            <DevTests v-else-if="activeTab === 'tests'" />
+            <DevStartup v-else-if="activeTab === 'startup'" />
+            <DevRunner v-else-if="activeTab === 'runner'" />
+            <DevData v-else-if="activeTab === 'data'" />
+            <DevProfiler v-else-if="activeTab === 'profiler'" />
+            <DevPanelAudit v-else-if="activeTab === 'panelAudit'" />
             <DevMetrics v-else-if="activeTab === 'metrics'" />
             <DevDatabase v-else-if="activeTab === 'database'" />
             <DevApi v-else-if="activeTab === 'api'" />
@@ -274,14 +283,14 @@
           <ul class="dev-search__list" v-if="searchResults.length">
             <li
               v-for="(item, index) in searchResults"
-              :key="item.name"
+              :key="item.key"
               :class="{ 'is-active': index === cursor }"
               @mouseenter="cursor = index"
               @click="pick(item)"
             >
               <el-icon :size="16"><component :is="item.icon" /></el-icon>
-              <span>{{ $t(`devPanel.tabs.${item.name}`) }}</span>
-              <code>{{ item.endpoint }}</code>
+              <span class="truncate">{{ item.label }}</span>
+              <code class="truncate">{{ item.detail }}</code>
             </li>
           </ul>
           <p class="dev-search__empty" v-else>{{ $t("devPanel.noResults") }}</p>
@@ -306,6 +315,15 @@ import { useDark } from "@vueuse/core";
 import {
   Aim,
   Bell,
+  Checked,
+  DocumentChecked,
+  Flag,
+  Histogram,
+  Lightning,
+  MagicStick,
+  Notebook,
+  Promotion,
+  Files,
   DataAnalysis,
   Coin,
   Connection,
@@ -332,7 +350,7 @@ import {
 } from "@element-plus/icons-vue";
 import { SUPPORT_LOCALES, setI18nLanguage } from "../i18n";
 import { useDevApi } from "../dev.api";
-import { useDevStore } from "../dev.store";
+import { IDevFocus, useDevStore } from "../dev.store";
 import DevMetrics from "./DevMetrics.vue";
 import DevJvm from "./DevJvm.vue";
 import DevAudit from "./DevAudit.vue";
@@ -352,6 +370,15 @@ import DevConfig from "./DevConfig.vue";
 import DevSecurity from "./DevSecurity.vue";
 import DevUsage from "./DevUsage.vue";
 import DevThreats from "./DevThreats.vue";
+import DevRisks from "./DevRisks.vue";
+import DevStartup from "./DevStartup.vue";
+import DevProfiler from "./DevProfiler.vue";
+import DevRunner from "./DevRunner.vue";
+import DevSmoke from "./DevSmoke.vue";
+import DevSlo from "./DevSlo.vue";
+import DevTests from "./DevTests.vue";
+import DevData from "./DevData.vue";
+import DevPanelAudit from "./DevPanelAudit.vue";
 
 interface IMenuItem {
   name: string;
@@ -383,6 +410,9 @@ const groups = computed(() =>
       name: "monitoring",
       items: [
         { name: "health", icon: FirstAidKit, endpoint: "GET /health" },
+        ...(features.value?.insights === false
+          ? []
+          : [{ name: "risks", icon: MagicStick, endpoint: "GET /risks" }]),
         { name: "metrics", icon: Monitor, endpoint: "GET /metrics" },
         { name: "jvm", icon: Cpu, endpoint: "GET /jvm · /memory" },
         { name: "database", icon: Coin, endpoint: "GET /database/*" },
@@ -399,11 +429,32 @@ const groups = computed(() =>
       ],
     },
     {
+      name: "quality",
+      items:
+        features.value?.insights === false
+          ? []
+          : [
+              { name: "slo", icon: Flag, endpoint: "GET /slo" },
+              { name: "smoke", icon: Checked, endpoint: "GET /smoke" },
+              { name: "tests", icon: DocumentChecked, endpoint: "GET /tests" },
+              { name: "startup", icon: Lightning, endpoint: "GET /startup" },
+            ],
+    },
+    {
       name: "tools",
       items: [
         ...(features.value?.query === false
           ? []
           : [{ name: "query", icon: Search, endpoint: "POST /query" }]),
+        ...(features.value?.apiRunner
+          ? [{ name: "runner", icon: Promotion, endpoint: "POST /runner/send" }]
+          : []),
+        ...(features.value?.query === false
+          ? []
+          : [{ name: "data", icon: Files, endpoint: "GET /data/rows" }]),
+        ...(features.value?.profiler
+          ? [{ name: "profiler", icon: Histogram, endpoint: "POST /profiler/start" }]
+          : []),
         { name: "liveLogs", icon: VideoPlay, endpoint: "GET /logs/live" },
         { name: "logLevels", icon: Operation, endpoint: "POST /logging/levels" },
         ...(store.canManageAccounts
@@ -425,7 +476,10 @@ const groups = computed(() =>
       name: "operations",
       items: [
         ...(store.canManageAccounts
-          ? [{ name: "accounts", icon: User, endpoint: "GET /accounts" }]
+          ? [
+              { name: "accounts", icon: User, endpoint: "GET /accounts" },
+              { name: "panelAudit", icon: Notebook, endpoint: "GET /panel-audit" },
+            ]
           : []),
         { name: "security", icon: Lock, endpoint: "GET /me/sessions" },
       ],
@@ -477,15 +531,81 @@ const searchText = ref("");
 const cursor = ref(0);
 const searchInput = ref<HTMLInputElement>();
 
-const searchResults = computed(() => {
+interface ISearchHit {
+  key: string;
+  icon: Component;
+  label: string;
+  detail: string;
+  tab: string;
+  focus?: IDevFocus;
+}
+
+// Bo'limlardan tashqari: endpointlar, jadvallar, xatolar, xavflar va trace id
+const searchIndex = ref<ISearchHit[]>([]);
+let indexLoaded = false;
+const loadSearchIndex = async () => {
+  if (indexLoaded) return;
+  indexLoaded = true;
+  const api = useDevApi();
+  const hits: ISearchHit[] = [];
+  const settled = await Promise.allSettled([
+    api.GET_CATALOG(), api.GET_DATA_TABLES(), api.GET_EXCEPTIONS(), api.GET_RISKS(),
+  ]);
+  const [catalog, tables, errors, risks] = settled;
+  if (catalog.status === "fulfilled") {
+    for (const entry of catalog.value.data) {
+      hits.push({ key: `e:${entry.endpoint}`, icon: Odometer, label: entry.endpoint,
+        detail: entry.handler, tab: "api", focus: { tab: "api", endpoint: entry.endpoint } });
+    }
+  }
+  if (tables.status === "fulfilled") {
+    for (const table of tables.value.data) {
+      const name = `${table.schema}.${table.table}`;
+      hits.push({ key: `t:${name}`, icon: Coin, label: name, detail: t("devPanel.tabs.data"),
+        tab: "data", focus: { tab: "data", table: name } });
+    }
+  }
+  if (errors.status === "fulfilled") {
+    for (const group of errors.value.data) {
+      const type = group.type.substring(group.type.lastIndexOf(".") + 1);
+      hits.push({ key: `x:${group.fingerprint}`, icon: WarningFilled,
+        label: `${type}: ${group.message ?? ""}`, detail: group.location ?? "", tab: "errors",
+        focus: { tab: "errors", endpoint: type } });
+    }
+  }
+  if (risks.status === "fulfilled") {
+    for (const item of risks.value.data.open) {
+      hits.push({ key: `r:${item.risk.key}`, icon: MagicStick, label: item.risk.title,
+        detail: t("devPanel.tabs.risks"), tab: "risks" });
+    }
+  }
+  searchIndex.value = hits;
+};
+
+const searchResults = computed<ISearchHit[]>(() => {
   const query = searchText.value.trim().toLowerCase();
-  if (!query) return flatItems.value;
-  return flatItems.value.filter((item) =>
-    `${t(`devPanel.tabs.${item.name}`)} ${item.endpoint}`
-      .toLowerCase()
-      .includes(query),
-  );
+  const menu = flatItems.value.map((item) => ({
+    key: `m:${item.name}`, icon: item.icon, label: t(`devPanel.tabs.${item.name}`),
+    detail: item.endpoint, tab: item.name,
+  }));
+  if (!query) return menu;
+  const hits: ISearchHit[] = [];
+  if (/^[0-9a-f-]{16,64}$/i.test(query)) {
+    hits.push({ key: `trace:${query}`, icon: Search, label: t("devPanel.openTrace"),
+      detail: query, tab: "api", focus: { tab: "api", traceId: query } });
+  }
+  const matches = (hit: ISearchHit) =>
+    `${hit.label} ${hit.detail}`.toLowerCase().includes(query);
+  return [...hits, ...menu.filter(matches), ...searchIndex.value.filter(matches).slice(0, 40)];
 });
+
+// Boshqa bo'lim "shu yerda och" desa (masalan, waterfall'dan qayta yuborish)
+watch(
+  () => store.focus,
+  (focus) => {
+    if (focus && focus.tab !== activeTab.value) activeTab.value = focus.tab;
+  },
+);
 
 watch(searchText, () => (cursor.value = 0));
 
@@ -496,6 +616,7 @@ const openSearch = async () => {
   menuOpen.value = false;
   await nextTick();
   searchInput.value?.focus();
+  loadSearchIndex();
 };
 
 const moveCursor = (step: number) => {
@@ -503,10 +624,17 @@ const moveCursor = (step: number) => {
   if (total) cursor.value = (cursor.value + step + total) % total;
 };
 
-const pick = (item?: IMenuItem) => {
+const pick = (item?: ISearchHit) => {
   if (!item) return;
-  selectTab(item.name);
   searchOpen.value = false;
+  if (item.focus) store.focus = item.focus;
+  // Shu bo'limning o'zida bo'lsak, uni qayta ochamiz: fokusni qabul qilsin
+  if (activeTab.value === item.tab && item.focus) {
+    activeTab.value = "";
+    nextTick(() => (activeTab.value = item.tab));
+  } else {
+    selectTab(item.tab);
+  }
 };
 
 const onKeydown = (event: KeyboardEvent) => {

@@ -145,6 +145,16 @@
     </div>
 
     <el-table v-else :data="list" v-loading="loading" border stripe>
+      <!-- Xato javobi nima degani: masalan, 400 da validatsiya xabari -->
+      <el-table-column type="expand" width="40">
+        <template #default="{ row }">
+          <div class="px-4 py-2">
+            <b class="text-sm">{{ $t("devPanel.audit.response") }}</b>
+            <pre v-if="row.responseBody" class="audit-body">{{ prettyJson(row.responseBody) }}</pre>
+            <p v-else class="m-0 text-xs text-gray-500">{{ $t("devPanel.audit.noResponse") }}</p>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column :label="$t('devPanel.audit.time')" width="170">
         <template #default="{ row }">{{
           formatDateTime(row.occurredAt)
@@ -230,6 +240,7 @@ import { IDevAuditEntry, IDevAuditFilter } from "../dev.types";
 import {
   devErrorMessage,
   formatDateTime,
+  prettyJson,
   TDevRange,
   useRangeEnds,
 } from "../dev.utils";
@@ -390,5 +401,16 @@ onMounted(load);
   .dev-audit-card {
     animation: none;
   }
+}
+.audit-body {
+  max-height: 260px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
 }
 </style>

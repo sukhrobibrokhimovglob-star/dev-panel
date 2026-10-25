@@ -7,7 +7,7 @@
   <!-- Aggregator only: the starter does not inherit from it, so its published pom stands alone. -->
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-build</artifactId>
-  <version>0.3.1</version>
+  <version>0.4.0</version>
   <packaging>pom</packaging>
 
   <modules>

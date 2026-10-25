@@ -31,6 +31,35 @@ properties, and your application serves a panel at `/dev-panel/` that tells you 
 - **Server clock** check, **live logs**, **log levels at runtime** (auto-revert),
   **configuration viewer** (secrets masked), recent deploys
 
+### Risks: problems before they happen (0.4)
+- **Risks page**: one ranked list of what will break and when, and the weak spots that hurt as
+  data grows. Each risk says what will happen, the numbers, what to do (often a ready SQL
+  statement) and where (the line of code, the table, the endpoint). New / getting worse /
+  resolved, snooze or accept with a reason; urgent ones are alerted, a weekly digest goes out
+  on Mondays, and an hour after each deploy a "what this deploy changed" message
+- **Forecasts**: endpoints getting slower day by day, answers returning more and more rows,
+  tables growing while read by full scans, disk, heap, the connection pool and request threads
+  at their daily peak, id columns near their limit, HTTPS certificates of called services,
+  goals (SLOs) running out of budget
+- **Weak spots**: foreign keys without an index, filtered columns without an index (with the
+  `CREATE INDEX`), duplicates in reference tables, tables to cache, missing statistics, bloat,
+  N+1 lookups with the line of code, inserts sent one by one, the same row loaded twice,
+  external calls inside a transaction, rows inserted on every start, risky settings
+  (open-in-view, SQL logging, ddl-auto, ...), **personal data in the logs** (PNFL, tokens,
+  passwords, cards)
+- **Code location for every SQL step** in the waterfall, an **Explain** button (query plan with
+  plain-language hints), the request itself with **Copy as curl**, **Replay** and the error
+  response body (also in the error audit)
+- **Baselines**: each endpoint compared with what is normal at this hour and weekday; a warning
+  when traffic drops; deploy markers on every chart
+- **Startup report**: slowest beans, SQL and rows inserted at start, migrations applied
+- **Goals (SLO)** per endpoint, **smoke checks** after every start and every 15 min,
+  **API runner** (call any endpoint with its parameters filled in), **data browser**,
+  **sampling profiler** with a flame graph, **Tests** tab (which endpoints the tests call vs
+  production traffic, JaCoCo coverage), the **panel's own action log**, a printable
+  **weekly report**, ⓘ explanations and verdicts on every card, search across endpoints, tables,
+  errors and trace ids
+
 ### Tools
 
 - **Server**: CPU (process and system), JVM heap and system memory, disk space, threads
@@ -61,7 +90,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.3.1</version>
+  <version>0.4.0</version>
 </dependency>
 ```
 
@@ -181,6 +210,15 @@ them.
 | `devpanel.alerts.webhook-url` | | Every alert as JSON |
 | `devpanel.alerts.daily-summary-at` | `09:00` | Server time; empty = no summary |
 | `devpanel.alerts.instance-name` | app @ host | How messages name this application |
+| `devpanel.insights.sensitive-patterns.<KIND>` | | Extra personal data to find in logs, a regex |
+| `devpanel.insights.log-privacy` | `true` | Look for personal data written to the logs |
+| `devpanel.insights.startup-report` | `true` | Record what each start did |
+| `devpanel.insights.risk-interval` | `15m` | How often the risk detectors run |
+| `devpanel.insights.smoke-interval` | `15m` | How often smoke checks run |
+| `devpanel.insights.api-runner` | `true` | API runner and smoke checks |
+| `devpanel.insights.profiler` | `true` | Sampling profiler (admins) |
+| `devpanel.alerts.weekly-digest-day` | `MONDAY` | Weekly risk digest; empty = none |
+| `devpanel.alerts.risk-alerts` | `true` | Alert risks that become urgent |
 | `devpanel.trace.header` | `X-Trace-Id` | |
 | `devpanel.trace.mdc-key` | `traceId` | |
 
@@ -195,7 +233,13 @@ them.
 - With AspectJ on the classpath, `@Scheduled` beans become proxies (turn off with
   `devpanel.insights.jobs=false`); code reading their fields directly from outside would see the
   proxy's empty fields
-- Tables `devpanel_exception`, `devpanel_endpoint_hour` (14 days) and `devpanel_deploy`
+- Tables `devpanel_exception`, `devpanel_endpoint_hour` (35 days), `devpanel_deploy`,
+  `devpanel_daily` (400 days of daily numbers), `devpanel_finding` (risks), `devpanel_slo`,
+  `devpanel_smoke`, `devpanel_smoke_run`, `devpanel_action`, `devpanel_test_report`
+- A startup recorder (Spring's `BufferingApplicationStartup`, only with `devpanel.enabled=true`)
+  and, in test runs only, a JUnit listener that writes `target/devpanel-tests.json`
+  (`-Ddevpanel.tests.report=src/main/resources/devpanel-tests.json` to ship it in the jar,
+  `=false` to turn it off)
 - Two daemon threads; nothing calls out except the clock check and your alert channels
 
 ## Security notes
@@ -212,6 +256,12 @@ them.
   stops working when the owner logs in. The time and IP of the setup are shown, and each user
   sees where they are logged in (My security) and can end those sessions.
 - Killing database queries, the heap histogram and the configuration viewer need an admin.
+- The panel's own tables (accounts, sessions) cannot be read from the SQL console or the data
+  browser. Every action in the panel (SQL run, queries stopped, requests sent, ...) is written
+  to its action log.
+- Request bodies kept with a trace have password/token fields masked; error bodies and log
+  examples have personal data masked. Authorization and cookies are never kept. The API runner
+  only calls the application itself; writing methods need an admin and a confirmation.
 - Serve the panel over HTTPS.
 - The SQL console runs every query in a read-only transaction with a statement timeout, so
   PostgreSQL itself refuses writes. `UPDATE` is off unless you enable it, and it can never touch

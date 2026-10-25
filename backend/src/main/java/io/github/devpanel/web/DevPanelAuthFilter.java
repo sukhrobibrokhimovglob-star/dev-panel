@@ -26,8 +26,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *   <li>{@code POST /login} needs no session;</li>
  *   <li>a login that is not finished (see {@link DevSessionStage}) reaches only the remaining
  *       login steps and {@code /logout};</li>
- *   <li>a finished login: every {@code GET} and the read-only {@code POST /query} and
- *       {@code POST /query/excel} for any account, every other method only for a
+ *   <li>a finished login: every {@code GET} and the read-only {@code POST /query},
+ *       {@code POST /query/excel} and {@code POST /database/explain} for any account, every
+ *       other method only for a
  *       {@code READ_WRITE} account (who may manage which account is decided in
  *       {@code DevAccountService}).</li>
  * </ul>
@@ -48,7 +49,8 @@ public class DevPanelAuthFilter extends OncePerRequestFilter {
   /** Own account; allowed even for a read-only account. */
   private static final Set<String> OWN_ACCOUNT_PATHS = Set.of("/me/password", "/logout");
   /** POSTs only because the SQL goes in the body; they are read-only. */
-  private static final Set<String> READ_ONLY_POSTS = Set.of("/query", "/query/excel");
+  private static final Set<String> READ_ONLY_POSTS = Set.of("/query", "/query/excel",
+      "/database/explain");
 
   private final String apiPath;
   private final DevAccountRepository accounts;
