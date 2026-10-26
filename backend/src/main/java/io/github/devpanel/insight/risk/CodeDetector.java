@@ -42,6 +42,12 @@ public class CodeDetector implements RiskDetector {
     return "code";
   }
 
+  /** Request statistics start empty after a restart; give them some traffic first. */
+  @Override
+  public boolean canResolve() {
+    return RiskDetector.uptime().toHours() >= 6;
+  }
+
   @Override
   public List<Risk> detect() {
     List<Risk> risks = new ArrayList<>();

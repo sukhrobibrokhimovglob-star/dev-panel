@@ -44,12 +44,15 @@ public class RiskEngine {
   public synchronized void run() {
     long start = System.currentTimeMillis();
     List<Risk> risks = new ArrayList<>();
+    // Detectors whose missing risks may be resolved now (ran, and know enough to say so)
     Set<String> succeeded = new HashSet<>();
     Map<String, String> failed = new LinkedHashMap<>();
     for (RiskDetector detector : detectors) {
       try {
         risks.addAll(detector.detect());
-        succeeded.add(detector.name());
+        if (detector.canResolve()) {
+          succeeded.add(detector.name());
+        }
       } catch (RuntimeException e) {
         failed.put(detector.name(), e.getClass().getSimpleName() + ": " + e.getMessage());
         log.debug("Dev panel risk detector {} failed", detector.name(), e);

@@ -29,6 +29,12 @@ public class PrivacyDetector implements RiskDetector {
     return "privacy";
   }
 
+  /** Only a day without such log lines says the logging was really fixed. */
+  @Override
+  public boolean canResolve() {
+    return RiskDetector.uptime().toHours() >= 24;
+  }
+
   @Override
   public List<Risk> detect() {
     Map<String, List<LogPrivacy.Finding>> byLogger = new LinkedHashMap<>();
