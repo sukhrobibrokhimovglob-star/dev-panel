@@ -262,8 +262,7 @@ public class DatabaseAdvisor {
               : "CREATE INDEX CONCURRENTLY IF NOT EXISTS " + index + " ON " + table.schema() + "."
                   + table.table() + " (" + column + ");";
           suggestions.add(new IndexSuggestion(table.schema(), table.table(), column, like,
-              table.liveRows(), table.seqScans(), table.indexScans(), create,
-              how[1].length() > 600 ? how[1].substring(0, 600) + "…" : how[1]));
+              table.liveRows(), table.seqScans(), table.indexScans(), create, how[1]));
         });
       }
       return suggestions;

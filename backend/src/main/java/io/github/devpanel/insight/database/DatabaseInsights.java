@@ -98,7 +98,8 @@ public class DatabaseInsights {
     String total = version != null && version >= 130000 ? "total_exec_time" : "total_time";
     String mean = version != null && version >= 130000 ? "mean_exec_time" : "mean_time";
     String max = version != null && version >= 130000 ? "max_exec_time" : "max_time";
-    return jdbcTemplate.query("select left(query, 4000) as query, calls, " + total + " as total,"
+    // The whole text: a statement cut short cannot be planned (Explain)
+    return jdbcTemplate.query("select left(query, 100000) as query, calls, " + total + " as total,"
             + " " + mean + " as mean, " + max + " as max, rows, shared_blks_read, shared_blks_hit"
             + " from pg_stat_statements s join pg_database d on d.oid = s.dbid"
             + " where d.datname = current_database() order by " + total + " desc limit 50",

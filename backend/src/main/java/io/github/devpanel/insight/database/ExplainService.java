@@ -53,6 +53,10 @@ public class ExplainService {
     if (!insights.isPostgres()) {
       throw new DevPanelException(HttpStatus.NOT_IMPLEMENTED, "Plans need PostgreSQL");
     }
+    if (sql.endsWith("…")) {
+      throw DevPanelException.badRequest("Only the start of this statement was kept (it is"
+          + " very long), so it cannot be planned; copy it from the log or pg_stat_statements");
+    }
     String statement = DevQueryService.validateSelect(sql.replaceFirst("^\\[batch ×\\d+]\\s*",
         ""));
     List<String> warnings = new ArrayList<>();

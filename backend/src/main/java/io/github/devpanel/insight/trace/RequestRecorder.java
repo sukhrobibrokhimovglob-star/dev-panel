@@ -29,6 +29,8 @@ public final class RequestRecorder {
   private static final int MAX_SPANS = 400;
   private static final int MAX_SHAPES = 300;
   private static final int MAX_TEXT = 2000;
+  /** The whole statement is kept (not shown) for the plan viewer, up to this length. */
+  private static final int MAX_FULL_SQL = 200_000;
   private static final int MAX_PARAMETER_KEYS = 500;
 
   private final long startNanos = System.nanoTime();
@@ -86,6 +88,9 @@ public final class RequestRecorder {
     if (span != null) {
       span.location = stats == null ? null : stats.location;
       span.parameters = parameters;
+      if (sql != null && sql.length() > MAX_TEXT && sql.length() <= MAX_FULL_SQL) {
+        span.fullText = sql;
+      }
     }
     return span;
   }
@@ -305,6 +310,8 @@ public final class RequestRecorder {
     private boolean inTransaction;
     /** Not serialized: shown only through the plan viewer, which needs the real values. */
     private Object[] parameters;
+    /** The statement before it was shortened for display; null when it was not. */
+    private String fullText;
 
     Span(String kind, String text, double startMs, double durationMs, String error) {
       this.kind = kind;
@@ -358,6 +365,11 @@ public final class RequestRecorder {
 
     public Object[] boundParameters() {
       return parameters;
+    }
+
+    /** The whole statement, also when {@link #getText()} is shortened. */
+    public String fullText() {
+      return fullText != null ? fullText : text;
     }
   }
 

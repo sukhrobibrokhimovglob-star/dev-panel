@@ -19,6 +19,16 @@ class RequestRecorderTest {
   }
 
   @Test
+  void aLongStatementIsShortenedForDisplayButKeptWholeForItsPlan() {
+    String sql = "select outcomedoc0_.id as id1_0_, " + "x.col as c, ".repeat(400)
+        + " from outcome_documents outcomedoc0_ where outcomedoc0_.id = ?";
+    RequestRecorder.Span span = new RequestRecorder().sql(sql, 0, 1000, null,
+        new Object[] {7});
+    assertThat(span.getText()).hasSizeLessThan(sql.length()).endsWith("…");
+    assertThat(span.fullText()).isEqualTo(sql);
+  }
+
+  @Test
   void onlyRepeatedLookupsCountAsNPlusOne() {
     RequestRecorder recorder = new RequestRecorder();
     for (int i = 0; i < 9; i++) {

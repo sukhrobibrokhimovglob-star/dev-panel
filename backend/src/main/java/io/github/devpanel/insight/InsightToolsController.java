@@ -228,7 +228,7 @@ public class InsightToolsController {
       if (!"SQL".equals(span.getKind())) {
         throw DevPanelException.badRequest("Only SQL steps have a plan");
       }
-      sql = span.getText();
+      sql = span.fullText();
       parameters = span.boundParameters();
     }
     if (sql == null || sql.isBlank()) {
