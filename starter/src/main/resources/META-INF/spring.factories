@@ -1,0 +1,7 @@
+# Both copies are listed; each checks at startup whether it is the one for this Spring version
+org.springframework.boot.env.EnvironmentPostProcessor=\
+io.github.devpanel.DevPanelPropertiesFile,\
+io.github.devpanel.boot3.DevPanelPropertiesFile
+org.springframework.context.ApplicationContextInitializer=\
+io.github.devpanel.insight.startup.StartupRecorder,\
+io.github.devpanel.boot3.insight.startup.StartupRecorder

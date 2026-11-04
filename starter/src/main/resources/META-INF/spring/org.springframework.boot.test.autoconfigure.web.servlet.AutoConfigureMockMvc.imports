@@ -1,0 +1,2 @@
+io.github.devpanel.testing.DevPanelMockMvcConfiguration
+io.github.devpanel.boot3.testing.DevPanelMockMvcConfiguration

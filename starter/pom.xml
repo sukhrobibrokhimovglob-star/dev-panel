@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    What applications depend on. One jar for Spring Boot 2.7 and 3: it carries the javax copy
+    (../backend) and the jakarta copy (../backend-boot3); at startup the copy for the running
+    Spring switches on and the other is never loaded. The two cores are unpacked into this jar,
+    so the published pom does not pull them in.
+  -->
+  <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
+  <artifactId>dev-panel-spring-boot-starter</artifactId>
+  <version>0.5.0</version>
+  <packaging>jar</packaging>
+
+  <name>Dev Panel Spring Boot Starter</name>
+  <description>A built-in admin and early-warning panel for Spring Boot 2.7 and 3 backends:
+    health, risks before they happen, request waterfalls, database advisor, SQL console, logs,
+    with its own two-factor login.</description>
+  <url>https://github.com/sukhrobibrokhimovglob-star/dev-panel</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <scm>
+    <url>https://github.com/sukhrobibrokhimovglob-star/dev-panel</url>
+    <connection>scm:git:https://github.com/sukhrobibrokhimovglob-star/dev-panel.git</connection>
+  </scm>
+
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <!-- The only runtime dependency: the application's Spring Boot BOM picks its version -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-crypto</artifactId>
+      <version>5.7.11</version>
+    </dependency>
+
+    <!-- Unpacked into this jar below; provided + optional so applications never fetch them -->
+    <dependency>
+      <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
+      <artifactId>dev-panel-core</artifactId>
+      <version>${project.version}</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
+      <artifactId>dev-panel-core-boot3</artifactId>
+      <version>${project.version}</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.6.1</version>
+        <executions>
+          <execution>
+            <id>unpack-cores</id>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>unpack-dependencies</goal>
+            </goals>
+            <configuration>
+              <includeArtifactIds>dev-panel-core,dev-panel-core-boot3</includeArtifactIds>
+              <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+              <!-- Their registrations name one copy each; this module's own name both -->
+              <excludes>META-INF/spring.factories,META-INF/spring/**,META-INF/services/**,META-INF/MANIFEST.MF,META-INF/maven/**</excludes>
+              <overWriteReleases>true</overWriteReleases>
+              <overWriteSnapshots>true</overWriteSnapshots>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

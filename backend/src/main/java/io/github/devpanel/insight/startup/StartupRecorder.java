@@ -23,6 +23,9 @@ public class StartupRecorder
 
   @Override
   public void initialize(ConfigurableApplicationContext context) {
+    if (!io.github.devpanel.support.DevPanelFlavor.active(context.getClassLoader())) {
+      return;
+    }
     Environment environment = context.getEnvironment();
     if (!"true".equalsIgnoreCase(environment.getProperty("devpanel.enabled"))
         || "false".equalsIgnoreCase(environment.getProperty("devpanel.insights.enabled"))

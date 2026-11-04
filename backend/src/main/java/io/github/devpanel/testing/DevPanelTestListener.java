@@ -38,16 +38,20 @@ public class DevPanelTestListener implements TestExecutionListener {
   private final List<Map<String, Object>> results = new ArrayList<>();
   private volatile boolean anyTest;
 
+  /** The starter registers both copies' listeners; only the one for this Spring works. */
+  private final boolean active = io.github.devpanel.support.DevPanelFlavor.active(
+      Thread.currentThread().getContextClassLoader());
+
   @Override
   public void testPlanExecutionStarted(TestPlan testPlan) {
-    if (target() != null) {
+    if (active && target() != null) {
       TestHits.start();
     }
   }
 
   @Override
   public void executionStarted(TestIdentifier identifier) {
-    if (identifier.isTest()) {
+    if (active && identifier.isTest()) {
       anyTest = true;
       started.put(identifier.getUniqueId(), System.currentTimeMillis());
       TestHits.currentTest(name(identifier));
@@ -56,14 +60,14 @@ public class DevPanelTestListener implements TestExecutionListener {
 
   @Override
   public void executionSkipped(TestIdentifier identifier, String reason) {
-    if (identifier.isTest()) {
+    if (active && identifier.isTest()) {
       add(identifier, "SKIPPED", 0, reason);
     }
   }
 
   @Override
   public void executionFinished(TestIdentifier identifier, TestExecutionResult result) {
-    if (!identifier.isTest()) {
+    if (!active || !identifier.isTest()) {
       return;
     }
     Long start = started.remove(identifier.getUniqueId());
@@ -78,6 +82,9 @@ public class DevPanelTestListener implements TestExecutionListener {
 
   @Override
   public void testPlanExecutionFinished(TestPlan testPlan) {
+    if (!active) {
+      return;
+    }
     Path target = target();
     TestHits.stop();
     if (target == null || !anyTest) {

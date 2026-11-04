@@ -90,7 +90,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.4.2</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
@@ -143,11 +143,14 @@ them.
 
 ## Requirements
 
-- Spring Boot 2.7.x (javax.servlet), Java 17+, a servlet web application
+- Spring Boot 2.7 or 3.x (one and the same dependency), Java 17+, a servlet web application.
+  The jar carries the panel for `javax.servlet` (Boot 2.7) and for `jakarta.servlet` (Boot 3);
+  the one for the running Spring switches on by itself
 - One `DataSource`. The panel creates three tables, `devpanel_account`, `devpanel_session` and
   `devpanel_request_audit`, with `CREATE TABLE IF NOT EXISTS`; it never touches your
   Liquibase/Flyway history
-- The SQL console needs PostgreSQL; everything else works on any database that supports
+- The database advisor, query plans and the risks drawn from them need PostgreSQL; everything
+  else, the SQL console included, works on any database that supports
   `CREATE TABLE IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` (PostgreSQL, H2, MariaDB)
 - Excel export needs `org.apache.poi:poi-ooxml` on the classpath (most projects have it)
 
@@ -272,10 +275,17 @@ them.
 ## Development
 
 ```bash
-./mvnw install              # the jar with the committed UI build, runs the tests
+./mvnw install              # both copies, tests on Boot 2.7 and on Boot 3, the merged jar
 ./mvnw -Pui install         # also rebuilds the UI first (downloads Node); commit the result
 cd frontend && npm run dev  # UI on http://localhost:5180, proxied to a backend on :8080
 ```
+
+Modules: `backend` is the code (Spring Boot 2.7, `javax`). `backend-boot3` has no sources of
+its own: the build copies `backend/src` with `javax.servlet` turned into `jakarta.servlet` and
+the package moved to `io.github.devpanel.boot3`, then compiles and runs the same tests on
+Spring Boot 3. `starter` merges both into `dev-panel-spring-boot-starter`, the one artifact
+applications use. Write code once, in `backend`, in a way that compiles on both (the tests of
+`backend-boot3` tell you when it does not).
 
 The built UI lives in `backend/src/main/resources/META-INF/devpanel-ui` and is committed, so
 JitPack builds without Node. Rebuild and commit it whenever `frontend/` changes.

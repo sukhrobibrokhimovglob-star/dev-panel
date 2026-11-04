@@ -23,6 +23,7 @@ import io.github.devpanel.query.DevQueryService;
 import io.github.devpanel.session.DevLoginController;
 import io.github.devpanel.session.DevLoginService;
 import io.github.devpanel.session.DevSessions;
+import io.github.devpanel.support.DevPanelFlavor;
 import io.github.devpanel.support.DevPanelInitializer;
 import io.github.devpanel.support.DevPanelSchema;
 import io.github.devpanel.support.TraceIds;
@@ -43,6 +44,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.Ordered;
@@ -61,6 +63,7 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
  * injection points are not affected.
  */
 @AutoConfiguration(after = DataSourceAutoConfiguration.class)
+@Conditional(DevPanelFlavor.class)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnProperty(prefix = "devpanel", name = "enabled", havingValue = "true")
 @ConditionalOnSingleCandidate(DataSource.class)

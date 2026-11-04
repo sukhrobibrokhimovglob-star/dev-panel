@@ -47,7 +47,7 @@ public class RestTemplateOutbound implements BeanPostProcessor {
       String url = request.getURI().toString();
       try {
         ClientHttpResponse response = execution.execute(request, body);
-        int status = response.getRawStatusCode();
+        int status = statusOf(response);
         if (target != null) {
           target.success(url, status, System.currentTimeMillis() - start);
         }
@@ -66,6 +66,15 @@ public class RestTemplateOutbound implements BeanPostProcessor {
         }
         throw e;
       }
+    }
+  }
+
+  /** Spring 5 throws for codes it does not know; Spring 6.2 removed getRawStatusCode. */
+  static int statusOf(ClientHttpResponse response) throws IOException {
+    try {
+      return response.getStatusCode().value();
+    } catch (IllegalArgumentException e) {
+      return 0;
     }
   }
 }

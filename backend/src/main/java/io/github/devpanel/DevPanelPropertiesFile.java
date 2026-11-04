@@ -29,6 +29,9 @@ public class DevPanelPropertiesFile implements EnvironmentPostProcessor, Ordered
   public void postProcessEnvironment(ConfigurableEnvironment environment,
       SpringApplication application) {
     ClassLoader classLoader = application.getClassLoader();
+    if (!io.github.devpanel.support.DevPanelFlavor.active(classLoader)) {
+      return;
+    }
     load(environment, new ClassPathResource(PROPERTIES, classLoader), false);
     if (ClassUtils.isPresent("org.yaml.snakeyaml.Yaml", classLoader)) {
       load(environment, new ClassPathResource(YAML, classLoader), true);

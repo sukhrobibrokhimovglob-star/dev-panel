@@ -3,6 +3,8 @@ package io.github.devpanel.testing;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
+import io.github.devpanel.support.DevPanelFlavor;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 
 /**
@@ -11,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
  * test report knows which endpoints web slice tests call. Only exists in test runs.
  */
 @Configuration(proxyBeanMethods = false)
+@Conditional(DevPanelFlavor.class)
 @ConditionalOnClass(name = {
     "org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer",
     "org.junit.platform.launcher.TestExecutionListener"})
