@@ -90,7 +90,7 @@ Add JitPack and the dependency to `pom.xml`:
 <dependency>
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
@@ -143,9 +143,10 @@ them.
 
 ## Requirements
 
-- Spring Boot 2.7 or 3.x (one and the same dependency), Java 17+, a servlet web application.
-  The jar carries the panel for `javax.servlet` (Boot 2.7) and for `jakarta.servlet` (Boot 3);
-  the one for the running Spring switches on by itself
+- Spring Boot 2.7, 3.x or 4.x (one and the same dependency), Java 17+, a servlet web
+  application. The jar carries the panel for `javax.servlet` (Boot 2.7), for `jakarta.servlet`
+  (Boot 3) and for Boot 4 (Jackson 3, its new module layout); the one for the running Spring
+  switches on by itself
 - One `DataSource`. The panel creates three tables, `devpanel_account`, `devpanel_session` and
   `devpanel_request_audit`, with `CREATE TABLE IF NOT EXISTS`; it never touches your
   Liquibase/Flyway history
@@ -275,7 +276,7 @@ them.
 ## Development
 
 ```bash
-./mvnw install              # both copies, tests on Boot 2.7 and on Boot 3, the merged jar
+./mvnw install              # all copies, tests on Boot 2.7, 3 and 4, the merged jar
 ./mvnw -Pui install         # also rebuilds the UI first (downloads Node); commit the result
 cd frontend && npm run dev  # UI on http://localhost:5180, proxied to a backend on :8080
 ```
@@ -283,9 +284,12 @@ cd frontend && npm run dev  # UI on http://localhost:5180, proxied to a backend 
 Modules: `backend` is the code (Spring Boot 2.7, `javax`). `backend-boot3` has no sources of
 its own: the build copies `backend/src` with `javax.servlet` turned into `jakarta.servlet` and
 the package moved to `io.github.devpanel.boot3`, then compiles and runs the same tests on
-Spring Boot 3. `starter` merges both into `dev-panel-spring-boot-starter`, the one artifact
-applications use. Write code once, in `backend`, in a way that compiles on both (the tests of
-`backend-boot3` tell you when it does not).
+Spring Boot 3. `backend-boot4` does the same for Spring Boot 4 (package `io.github.devpanel.boot4`),
+also renaming the Boot classes that moved; the few files a rename cannot fix (Jackson 3, in
+`support/Json.java`) have a Boot 4 twin in `backend-boot4/src/override`. `starter` merges all three
+into `dev-panel-spring-boot-starter`, the one artifact applications use. Write code once, in
+`backend`, in a way that compiles everywhere (the tests of `backend-boot3` and `backend-boot4`
+tell you when it does not), and use `Json` instead of Jackson directly.
 
 The built UI lives in `backend/src/main/resources/META-INF/devpanel-ui` and is committed, so
 JitPack builds without Node. Rebuild and commit it whenever `frontend/` changes.

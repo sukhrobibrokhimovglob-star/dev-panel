@@ -344,7 +344,7 @@ public class InsightToolsController {
 
   @PostMapping("/smoke")
   public SmokeChecks.Check createSmoke(DevAccount actor,
-      @RequestBody SmokeChecks.Check check) {
+      @RequestBody SmokeChecks.Input check) {
     requireAdmin(actor);
     SmokeChecks.Check saved = requireSmoke().save(null, check, actor.username());
     actions.record(actor, "smoke.create", saved.name(), saved.method() + " " + saved.path());
@@ -353,7 +353,7 @@ public class InsightToolsController {
 
   @PutMapping("/smoke/{id}")
   public SmokeChecks.Check updateSmoke(DevAccount actor, @PathVariable long id,
-      @RequestBody SmokeChecks.Check check) {
+      @RequestBody SmokeChecks.Input check) {
     requireAdmin(actor);
     SmokeChecks.Check saved = requireSmoke().save(id, check, actor.username());
     actions.record(actor, "smoke.update", saved.name(), saved.method() + " " + saved.path());

@@ -1,12 +1,11 @@
 package io.github.devpanel.insight.tests;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.devpanel.insight.ops.DeployInfo;
 import io.github.devpanel.insight.requests.EndpointHistory;
 import io.github.devpanel.insight.requests.EndpointHistory.Day;
 import io.github.devpanel.insight.usage.EndpointCatalog;
 import io.github.devpanel.support.DevPanelException;
+import io.github.devpanel.support.Json;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -36,8 +35,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 public class TestReports {
 
-  private static final ObjectMapper JSON = new ObjectMapper()
-      .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   private static final int MAX_UPLOAD = 30 * 1024 * 1024;
   private static final int KEEP_UPLOADS = 6;
 
@@ -251,8 +248,8 @@ public class TestReports {
 
   static Report parse(String json) {
     try {
-      return JSON.readValue(json, Report.class);
-    } catch (IOException e) {
+      return Json.read(json, Report.class);
+    } catch (IllegalArgumentException e) {
       return null;
     }
   }

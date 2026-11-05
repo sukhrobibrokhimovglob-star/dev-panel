@@ -3,6 +3,11 @@ package io.github.devpanel;
 import static io.github.devpanel.PanelClient.API;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
@@ -49,11 +54,13 @@ class DevPanelIntegrationTest {
 
   @Test
   @Order(1)
-  void servesTheUiWithoutLogin() {
-    ResponseEntity<String> redirect = rest.getForEntity("/dev-panel", String.class);
-    assertThat(redirect.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+  void servesTheUiWithoutLogin() throws Exception {
+    // A client of its own: Boot 4's TestRestTemplate follows redirects
+    HttpResponse<Void> redirect = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
+        URI.create(rest.getRootUri() + "/dev-panel")).build(), BodyHandlers.discarding());
+    assertThat(redirect.statusCode()).isEqualTo(HttpStatus.FOUND.value());
     // Relative, so a proxy prefix such as /api is kept
-    assertThat(redirect.getHeaders().getFirst(HttpHeaders.LOCATION)).isEqualTo("dev-panel/");
+    assertThat(redirect.headers().firstValue(HttpHeaders.LOCATION)).hasValue("dev-panel/");
 
     ResponseEntity<String> page = rest.getForEntity("/dev-panel/", String.class);
     assertThat(page.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -74,7 +81,7 @@ class DevPanelIntegrationTest {
     PanelClient anonymous = new PanelClient(rest);
     ResponseEntity<Map<String, Object>> me = anonymous.get("/me");
     assertThat(me.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    assertThat(me.getHeaders().containsKey(HttpHeaders.WWW_AUTHENTICATE)).isFalse();
+    assertThat(me.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).isNull();
     assertThat(me.getBody()).containsKey("traceId");
 
     // A cross-site form cannot add the header

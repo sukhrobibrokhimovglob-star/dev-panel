@@ -1,5 +1,7 @@
 package io.github.devpanel.insight.jobs;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -48,7 +50,8 @@ public class JobStats {
     holders.orderedStream().forEach(holder -> {
       for (ScheduledTask scheduled : holder.getScheduledTasks()) {
         Task task = scheduled.getTask();
-        if (!(task.getRunnable() instanceof ScheduledMethodRunnable method)) {
+        ScheduledMethodRunnable method = scheduledMethod(task.getRunnable());
+        if (method == null) {
           continue;
         }
         String name = method.getMethod().getDeclaringClass().getSimpleName() + "."
@@ -58,6 +61,38 @@ public class JobStats {
     });
     views.sort(Comparator.comparing(JobView::name));
     return views;
+  }
+
+  /**
+   * Spring 6.2+ wraps the method in Task's private OutcomeTrackingRunnable (and error handling
+   * wraps it too), so look a few layers in.
+   */
+  static ScheduledMethodRunnable scheduledMethod(Runnable runnable) {
+    Object current = runnable;
+    for (int depth = 0; depth < 4 && current != null; depth++) {
+      if (current instanceof ScheduledMethodRunnable method) {
+        return method;
+      }
+      current = wrapped(current);
+    }
+    return null;
+  }
+
+  private static Object wrapped(Object runnable) {
+    for (Class<?> type = runnable.getClass(); type != Object.class; type = type.getSuperclass()) {
+      for (Field field : type.getDeclaredFields()) {
+        if (Runnable.class.isAssignableFrom(field.getType())
+            && !Modifier.isStatic(field.getModifiers())) {
+          try {
+            field.setAccessible(true);
+            return field.get(runnable);
+          } catch (RuntimeException | IllegalAccessException e) {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   private JobView view(String name, Task task, Runs jobRuns, Instant now) {

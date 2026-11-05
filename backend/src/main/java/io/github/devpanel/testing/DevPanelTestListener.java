@@ -1,7 +1,5 @@
 package io.github.devpanel.testing;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -104,8 +102,8 @@ public class DevPanelTestListener implements TestExecutionListener {
       if (target.getParent() != null) {
         Files.createDirectories(target.getParent());
       }
-      Files.writeString(target, new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
-          .writeValueAsString(report), StandardCharsets.UTF_8);
+      Files.writeString(target, io.github.devpanel.support.Json.writePretty(report),
+          StandardCharsets.UTF_8);
     } catch (IOException | RuntimeException | LinkageError e) {
       System.err.println("[dev-panel] Could not write the test report: " + e.getMessage());
     }

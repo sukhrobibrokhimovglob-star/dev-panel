@@ -1,9 +1,7 @@
 package io.github.devpanel.insight.risk;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.devpanel.insight.risk.Risk.Severity;
+import io.github.devpanel.support.Json;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -23,8 +21,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 public class RiskStore {
 
-  private static final ObjectMapper JSON = new ObjectMapper()
-      .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   private static final int MAX_PAYLOAD = 8000;
   private static final Duration KEEP_RESOLVED = Duration.ofDays(90);
   private static final String COLUMNS = "finding_key, category, area, severity, worst_severity,"
@@ -154,16 +150,16 @@ public class RiskStore {
     Risk fitted = risk;
     try {
       Long at = changedAt == null ? null : changedAt.toEpochMilli();
-      String json = JSON.writeValueAsString(new Payload(fitted, changedFrom, at));
+      String json = Json.write(new Payload(fitted, changedFrom, at));
       if (json.length() > MAX_PAYLOAD) {
         fitted = new Risk(risk.key(), risk.category(), risk.area(), risk.severity(),
             risk.title(), cut(risk.impact(), 1000), cut(risk.evidence(), 2000),
             cut(risk.fix(), 1000), cut(risk.where(), 500), cut(risk.sql(), 1000),
             risk.daysLeft(), risk.tab(), risk.weight());
-        json = JSON.writeValueAsString(new Payload(fitted, changedFrom, at));
+        json = Json.write(new Payload(fitted, changedFrom, at));
       }
       return json.length() > MAX_PAYLOAD ? null : json;
-    } catch (JsonProcessingException e) {
+    } catch (IllegalArgumentException e) {
       return null;
     }
   }
@@ -173,8 +169,8 @@ public class RiskStore {
       return null;
     }
     try {
-      return JSON.readValue(json, Payload.class);
-    } catch (JsonProcessingException e) {
+      return Json.read(json, Payload.class);
+    } catch (IllegalArgumentException e) {
       return null;
     }
   }

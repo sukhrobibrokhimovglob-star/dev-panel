@@ -266,7 +266,7 @@ class InsightsIntegrationTest {
         org.springframework.security.config.annotation.web.builders.HttpSecurity http)
         throws Exception {
       return http.authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
-          .csrf().disable().build();
+          .csrf(csrf -> csrf.disable()).build();
     }
 
     // Built the way gp builds it, without Boot's RestTemplateBuilder bean

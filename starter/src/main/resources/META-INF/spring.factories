@@ -1,7 +1,11 @@
-# Both copies are listed; each checks at startup whether it is the one for this Spring version
+# Every copy is listed; each checks at startup whether it is the one for this Spring version.
+# Boot 4 reads post-processors under their new name.
 org.springframework.boot.env.EnvironmentPostProcessor=\
 io.github.devpanel.DevPanelPropertiesFile,\
 io.github.devpanel.boot3.DevPanelPropertiesFile
+org.springframework.boot.EnvironmentPostProcessor=\
+io.github.devpanel.boot4.DevPanelPropertiesFile
 org.springframework.context.ApplicationContextInitializer=\
 io.github.devpanel.insight.startup.StartupRecorder,\
-io.github.devpanel.boot3.insight.startup.StartupRecorder
+io.github.devpanel.boot3.insight.startup.StartupRecorder,\
+io.github.devpanel.boot4.insight.startup.StartupRecorder

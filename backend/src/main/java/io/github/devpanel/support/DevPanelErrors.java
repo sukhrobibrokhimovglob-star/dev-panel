@@ -1,6 +1,5 @@
 package io.github.devpanel.support;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,8 +12,6 @@ import org.springframework.http.MediaType;
  * written both by the exception handler and by the auth filter (which runs before Spring MVC).
  */
 public final class DevPanelErrors {
-
-  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private DevPanelErrors() {
   }
@@ -33,7 +30,7 @@ public final class DevPanelErrors {
     response.setStatus(status);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding("UTF-8");
-    MAPPER.writeValue(response.getOutputStream(),
-        body(status, message, TraceIds.of(request, response)));
+    response.getOutputStream().write(
+        Json.bytes(body(status, message, TraceIds.of(request, response))));
   }
 }

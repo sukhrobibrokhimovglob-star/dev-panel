@@ -5,18 +5,18 @@
   <modelVersion>4.0.0</modelVersion>
 
   <!--
-    What applications depend on. One jar for Spring Boot 2.7 and 3: it carries the javax copy
-    (../backend) and the jakarta copy (../backend-boot3); at startup the copy for the running
-    Spring switches on and the other is never loaded. The two cores are unpacked into this jar,
+    What applications depend on. One jar for Spring Boot 2.7, 3 and 4: it carries the javax copy
+    (../backend), the jakarta copy (../backend-boot3) and the Boot 4 copy (../backend-boot4); at
+    startup the copy for the running Spring switches on and the others are never loaded. The two cores are unpacked into this jar,
     so the published pom does not pull them in.
   -->
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-spring-boot-starter</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <packaging>jar</packaging>
 
   <name>Dev Panel Spring Boot Starter</name>
-  <description>A built-in admin and early-warning panel for Spring Boot 2.7 and 3 backends:
+  <description>A built-in admin and early-warning panel for Spring Boot 2.7, 3 and 4 backends:
     health, risks before they happen, request waterfalls, database advisor, SQL console, logs,
     with its own two-factor login.</description>
   <url>https://github.com/sukhrobibrokhimovglob-star/dev-panel</url>
@@ -62,6 +62,13 @@
       <scope>provided</scope>
       <optional>true</optional>
     </dependency>
+    <dependency>
+      <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
+      <artifactId>dev-panel-core-boot4</artifactId>
+      <version>${project.version}</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
   </dependencies>
 
   <build>
@@ -78,9 +85,9 @@
               <goal>unpack-dependencies</goal>
             </goals>
             <configuration>
-              <includeArtifactIds>dev-panel-core,dev-panel-core-boot3</includeArtifactIds>
+              <includeArtifactIds>dev-panel-core,dev-panel-core-boot3,dev-panel-core-boot4</includeArtifactIds>
               <outputDirectory>${project.build.outputDirectory}</outputDirectory>
-              <!-- Their registrations name one copy each; this module's own name both -->
+              <!-- Their registrations name one copy each; this module's own name all three -->
               <excludes>META-INF/spring.factories,META-INF/spring/**,META-INF/services/**,META-INF/MANIFEST.MF,META-INF/maven/**</excludes>
               <overWriteReleases>true</overWriteReleases>
               <overWriteSnapshots>true</overWriteSnapshots>

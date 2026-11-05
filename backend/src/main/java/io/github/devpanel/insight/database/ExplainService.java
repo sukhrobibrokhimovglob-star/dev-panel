@@ -1,9 +1,8 @@
 package io.github.devpanel.insight.database;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.devpanel.query.DevQueryService;
 import io.github.devpanel.support.DevPanelException;
+import io.github.devpanel.support.Json;
 import java.time.temporal.Temporal;
 import java.util.ArrayList;
 import java.util.Date;
@@ -32,7 +31,6 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 public class ExplainService {
 
-  private static final ObjectMapper JSON = new ObjectMapper();
   private static final Pattern DOLLAR = Pattern.compile("\\$(\\d+)");
   private static final int LARGE_TABLE = 10_000;
 
@@ -106,36 +104,36 @@ public class ExplainService {
             + e.getMostSpecificCause().getMessage());
       }
     });
+    Map<?, ?> root;
     try {
-      JsonNode root = JSON.readTree(json).get(0);
-      List<Node> nodes = new ArrayList<>();
-      Map<String, Long> tableRows = tableRows();
-      flatten(root.get("Plan"), 0, nodes);
-      List<String> hints = hints(nodes, tableRows, analyze);
-      return new Plan(statement, json, nodes, warnings, hints, analyze,
-          root.path("Planning Time").asDouble(-1), root.path("Execution Time").asDouble(-1));
-    } catch (java.io.IOException e) {
+      root = (Map<?, ?>) ((List<?>) Json.read(json, Object.class)).get(0);
+    } catch (IllegalArgumentException | ClassCastException | IndexOutOfBoundsException e) {
       throw new IllegalStateException("Unreadable plan", e);
     }
+    List<Node> nodes = new ArrayList<>();
+    Map<String, Long> tableRows = tableRows();
+    flatten(root.get("Plan"), 0, nodes);
+    List<String> hints = hints(nodes, tableRows, analyze);
+    return new Plan(statement, json, nodes, warnings, hints, analyze,
+        number(root, "Planning Time", -1), number(root, "Execution Time", -1));
   }
 
-  private void flatten(JsonNode plan, int depth, List<Node> nodes) {
-    if (plan == null) {
+  private void flatten(Object node, int depth, List<Node> nodes) {
+    if (!(node instanceof Map<?, ?> plan)) {
       return;
     }
-    nodes.add(new Node(depth, plan.path("Node Type").asText(),
+    nodes.add(new Node(depth, String.valueOf(plan.get("Node Type")),
         text(plan, "Relation Name"), text(plan, "Index Name"), text(plan, "Alias"),
-        plan.path("Startup Cost").asDouble(), plan.path("Total Cost").asDouble(),
-        plan.path("Plan Rows").asLong(),
-        plan.has("Actual Rows") ? plan.path("Actual Rows").asLong() : -1,
-        plan.has("Actual Total Time") ? plan.path("Actual Total Time").asDouble() : -1,
-        plan.has("Actual Loops") ? plan.path("Actual Loops").asLong() : -1,
+        number(plan, "Startup Cost", 0), number(plan, "Total Cost", 0),
+        (long) number(plan, "Plan Rows", 0),
+        (long) number(plan, "Actual Rows", -1),
+        number(plan, "Actual Total Time", -1),
+        (long) number(plan, "Actual Loops", -1),
         text(plan, "Filter"), text(plan, "Index Cond"),
-        plan.has("Rows Removed by Filter") ? plan.path("Rows Removed by Filter").asLong() : -1,
+        (long) number(plan, "Rows Removed by Filter", -1),
         text(plan, "Sort Method"), text(plan, "Join Type"), text(plan, "Hash Cond")));
-    JsonNode children = plan.get("Plans");
-    if (children != null) {
-      for (JsonNode child : children) {
+    if (plan.get("Plans") instanceof List<?> children) {
+      for (Object child : children) {
         flatten(child, depth + 1, nodes);
       }
     }
@@ -281,8 +279,13 @@ public class ExplainService {
     return "NULL";
   }
 
-  private static String text(JsonNode node, String field) {
-    return node.has(field) ? node.get(field).asText() : null;
+  private static String text(Map<?, ?> node, String field) {
+    Object value = node.get(field);
+    return value == null ? null : String.valueOf(value);
+  }
+
+  private static double number(Map<?, ?> node, String field, double missing) {
+    return node.get(field) instanceof Number value ? value.doubleValue() : missing;
   }
 
   /** Times in ms; {@code actualRows}, {@code actualMs}, {@code loops}: -1 without analyze. */

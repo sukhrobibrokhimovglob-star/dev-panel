@@ -72,7 +72,7 @@ public class SmokeChecks {
     return views;
   }
 
-  public Check save(Long id, Check input, String by) {
+  public Check save(Long id, Input input, String by) {
     String method = input.method() == null ? "GET" : input.method().trim()
         .toUpperCase(Locale.ROOT);
     if (!method.equals("GET") && !method.equals("HEAD")) {
@@ -84,8 +84,11 @@ public class SmokeChecks {
     if (input.path() == null || !input.path().startsWith("/") || input.path().length() > 1000) {
       throw DevPanelException.badRequest("The path must start with /");
     }
-    int expected = input.expectedStatus() <= 0 ? 200 : input.expectedStatus();
-    long maxMs = input.maxMs() <= 0 ? 5000 : Math.min(input.maxMs(), 60_000);
+    int expected = input.expectedStatus() == null || input.expectedStatus() <= 0 ? 200
+        : input.expectedStatus();
+    long maxMs = input.maxMs() == null || input.maxMs() <= 0 ? 5000
+        : Math.min(input.maxMs(), 60_000);
+    boolean enabled = input.enabled() == null || input.enabled();
     String headers = input.headers() == null ? null : input.headers().trim();
     if (headers != null && headers.length() > 2000) {
       throw DevPanelException.badRequest("Headers are too long");
@@ -96,7 +99,7 @@ public class SmokeChecks {
       jdbcTemplate.update("INSERT INTO devpanel_smoke (name, method, path, headers,"
               + " expected_status, max_ms, body_contains, enabled, created_by, created_at)"
               + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", input.name().trim(), method,
-          input.path().trim(), headers, expected, maxMs, contains, input.enabled(), by,
+          input.path().trim(), headers, expected, maxMs, contains, enabled, by,
           Timestamp.from(Instant.now()));
       List<Check> all = checks();
       return all.get(all.size() - 1);
@@ -104,7 +107,7 @@ public class SmokeChecks {
     if (jdbcTemplate.update("UPDATE devpanel_smoke SET name = ?, method = ?, path = ?,"
             + " headers = ?, expected_status = ?, max_ms = ?, body_contains = ?, enabled = ?"
             + " WHERE id = ?", input.name().trim(), method, input.path().trim(), headers,
-        expected, maxMs, contains, input.enabled(), id) == 0) {
+        expected, maxMs, contains, enabled, id) == 0) {
       throw DevPanelException.notFound("No such smoke check");
     }
     return checks().stream().filter(check -> check.id() == id).findFirst().orElseThrow();
@@ -186,6 +189,14 @@ public class SmokeChecks {
   public record Check(long id, String name, String method, String path, String headers,
                       int expectedStatus, long maxMs, String bodyContains, boolean enabled,
                       String createdBy, Instant createdAt) {
+  }
+
+  /**
+   * What the Smoke tab sends. Boxed, so a missing number is "use the default": Jackson 3 (Boot 4)
+   * refuses a missing primitive. A missing {@code enabled} means on.
+   */
+  public record Input(String name, String method, String path, String headers,
+                      Integer expectedStatus, Long maxMs, String bodyContains, Boolean enabled) {
   }
 
   public record Run(Instant time, boolean ok, int status, long ms, String error,

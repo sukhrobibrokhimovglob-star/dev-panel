@@ -1,6 +1,6 @@
 package io.github.devpanel.insight.alerts;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.devpanel.support.Json;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -11,8 +11,6 @@ import java.util.Map;
 
 /** Delivers alert texts: Telegram (a bot of your own, free) and/or any webhook. */
 public class Notifier {
-
-  private static final ObjectMapper JSON = new ObjectMapper();
 
   private final String telegramToken;
   private final String telegramChatId;
@@ -45,7 +43,7 @@ public class Notifier {
           "application/x-www-form-urlencoded", form.getBytes(StandardCharsets.UTF_8));
     }
     if (webhookConfigured()) {
-      post(webhookUrl, "application/json", JSON.writeValueAsBytes(payload));
+      post(webhookUrl, "application/json", Json.bytes(payload));
     }
   }
 

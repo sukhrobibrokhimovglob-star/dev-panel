@@ -1,2 +1,3 @@
 io.github.devpanel.testing.DevPanelTestListener
 io.github.devpanel.boot3.testing.DevPanelTestListener
+io.github.devpanel.boot4.testing.DevPanelTestListener

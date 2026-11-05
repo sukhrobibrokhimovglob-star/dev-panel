@@ -12,7 +12,7 @@
   -->
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-core-boot3</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <packaging>jar</packaging>
 
   <name>Dev Panel core (Spring Boot 3)</name>
@@ -194,7 +194,7 @@
                       <replaceregex pattern="javax\.servlet" replace="jakarta.servlet" flags="g"/>
                       <replaceregex pattern="javax\.persistence" replace="jakarta.persistence" flags="g"/>
                       <replaceregex pattern="javax\.annotation\.PostConstruct" replace="jakarta.annotation.PostConstruct" flags="g"/>
-                      <replaceregex pattern="JAKARTA_COPY = false" replace="JAKARTA_COPY = true" flags="g"/>
+                      <replaceregex pattern="SPRING = 5;" replace="SPRING = 6;" flags="g"/>
                     </tokenfilter>
                   </filterchain>
                 </copy>
