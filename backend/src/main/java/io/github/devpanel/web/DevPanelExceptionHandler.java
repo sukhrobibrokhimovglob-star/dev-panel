@@ -3,6 +3,7 @@ package io.github.devpanel.web;
 import io.github.devpanel.support.DevPanelErrors;
 import io.github.devpanel.support.DevPanelException;
 import io.github.devpanel.support.TraceIds;
+import java.io.IOException;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -44,9 +45,42 @@ public class DevPanelExceptionHandler {
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Map<String, Object>> unexpected(Exception e, HttpServletRequest request,
       HttpServletResponse response) {
+    if (clientGone(e)) {
+      // The browser left (closed the Logs tab, a proxy timed out): nobody to answer
+      log.debug("Dev panel client went away during {}", request.getRequestURI());
+      return null;
+    }
+    if (response.isCommitted() || isStream(response)) {
+      // An error body cannot be written into a started answer or an event stream
+      log.warn("Dev panel request {} {} failed after the answer started", request.getMethod(),
+          request.getRequestURI(), e);
+      return null;
+    }
     log.error("Dev panel request {} {} failed", request.getMethod(), request.getRequestURI(), e);
     return body(HttpStatus.INTERNAL_SERVER_ERROR, e.getClass().getSimpleName() + ": "
         + e.getMessage(), request, response);
+  }
+
+  /** Tomcat's ClientAbortException, Spring 6.1+'s AsyncRequestNotUsableException, a broken pipe. */
+  static boolean clientGone(Throwable error) {
+    for (Throwable e = error; e != null; e = e.getCause() == e ? null : e.getCause()) {
+      String type = e.getClass().getSimpleName();
+      if (type.equals("ClientAbortException") || type.equals("AsyncRequestNotUsableException")
+          || type.equals("EofException")) {
+        return true;
+      }
+      String message = e.getMessage();
+      if (e instanceof IOException && message != null && (message.contains("Broken pipe")
+          || message.contains("Connection reset") || message.contains("connection was aborted"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isStream(HttpServletResponse response) {
+    String type = response.getContentType();
+    return type != null && type.startsWith("text/event-stream");
   }
 
   private static ResponseEntity<Map<String, Object>> body(HttpStatus status, String message,
