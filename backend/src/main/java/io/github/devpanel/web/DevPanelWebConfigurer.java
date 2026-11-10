@@ -3,6 +3,7 @@ package io.github.devpanel.web;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.http.CacheControl;
+import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -13,7 +14,7 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  * Serves the bundled Vue UI from {@code classpath:/META-INF/devpanel-ui/} at
  * {@code <base-path>/}, gzipped when the browser accepts it. The UI uses relative URLs only, so
  * any context path and base path work. Static files need no login; everything they show comes
- * from the API, which does.
+ * from the API, which does. The API's JSON goes through {@link DevPanelJsonConverter}.
  */
 public class DevPanelWebConfigurer implements WebMvcConfigurer {
 
@@ -41,6 +42,11 @@ public class DevPanelWebConfigurer implements WebMvcConfigurer {
         .resourceChain(true)
         .addResolver(new EncodedResourceResolver())
         .addResolver(new PathResourceResolver());
+  }
+
+  @Override
+  public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+    converters.add(0, new DevPanelJsonConverter());
   }
 
   @Override

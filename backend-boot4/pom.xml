@@ -12,7 +12,7 @@
   -->
   <groupId>com.github.sukhrobibrokhimovglob-star.dev-panel</groupId>
   <artifactId>dev-panel-core-boot4</artifactId>
-  <version>0.6.1</version>
+  <version>0.6.2</version>
   <packaging>jar</packaging>
 
   <name>Dev Panel core (Spring Boot 4)</name>
@@ -237,6 +237,7 @@
                       <replaceregex pattern="new AntPathRequestMatcher\(" replace="PathPatternRequestMatcher.withDefaults().matcher(" flags="g"/>
                       <replaceregex pattern="org\.springframework\.boot\.test\.web\.client\.TestRestTemplate" replace="org.springframework.boot.resttestclient.TestRestTemplate" flags="g"/>
                       <replaceregex pattern="org\.springframework\.boot\.web\.client\.RestTemplateBuilder" replace="org.springframework.boot.restclient.RestTemplateBuilder" flags="g"/>
+                      <replaceregex pattern="spring\.jackson\.serialization\.write-dates-as-timestamps" replace="spring.jackson.datatype.datetime.write-dates-as-timestamps" flags="g"/>
                       <replaceregex pattern="^@SpringBootTest" replace="@org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate @SpringBootTest" flags="g"/>
                     </tokenfilter>
                   </filterchain>

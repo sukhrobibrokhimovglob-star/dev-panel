@@ -1,5 +1,6 @@
 package io.github.devpanel.insight.logs;
 
+import io.github.devpanel.support.Json;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -49,7 +51,9 @@ public class LiveLogs {
       queue.drainTo(batch, 500);
       try {
         // An empty batch is the heartbeat that keeps proxies from closing the stream
-        emitter.send(SseEmitter.event().name("lines").data(batch));
+        // Written by the panel: this thread is not a request, so the converters cannot tell
+        emitter.send(SseEmitter.event().name("lines").data(Json.write(batch),
+            MediaType.APPLICATION_JSON));
       } catch (IOException | IllegalStateException e) {
         close.run();
       }

@@ -1,5 +1,6 @@
 package io.github.devpanel.support;
 
+import java.lang.reflect.Type;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.SerializationFeature;
@@ -7,14 +8,19 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The Spring Boot 4 (Jackson 3) twin of backend/.../support/Json.java: same methods, same
- * behaviour. The build puts it in place of that file in the Boot 4 copy.
+ * behaviour. The build puts it in place of that file in the Boot 4 copy. Jackson 3 has java.time
+ * built in and writes dates as ISO text by default; a missing primitive in a request body is
+ * allowed, as in Jackson 2.
  */
 public final class Json {
 
   private static final JsonMapper MAPPER = JsonMapper.builder()
       .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+      .disable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
       .build();
   private static final JsonMapper PRETTY = JsonMapper.builder()
+      .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+      .disable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
       .enable(SerializationFeature.INDENT_OUTPUT)
       .build();
 
@@ -50,6 +56,15 @@ public final class Json {
   public static <T> T read(String json, Class<T> type) {
     try {
       return MAPPER.readValue(json, type);
+    } catch (JacksonException e) {
+      throw new IllegalArgumentException(e.getOriginalMessage(), e);
+    }
+  }
+
+  /** For request bodies: generic types such as {@code Map<String, Object>}. */
+  public static Object read(byte[] json, Type type) {
+    try {
+      return MAPPER.readValue(json, MAPPER.getTypeFactory().constructType(type));
     } catch (JacksonException e) {
       throw new IllegalArgumentException(e.getOriginalMessage(), e);
     }
